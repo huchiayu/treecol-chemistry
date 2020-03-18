@@ -15,7 +15,12 @@ using Sundials #for CVODE_BDF
 
 export solve_equilibrium_abundances, calc_abund_derived, init_abund
 export kH2diss, kdust
-export iH2,iCO,iC,fac_H,fac_C,fac_O,dict
+export dict
+export iH2,iCO,iC
+export fac_H, fac_C, fac_O, charge
+export abC_s, abO_s
+export N_spec, N_reac
+
 
 ssCO = readdlm("CO_shielding_functions/shield.03.5.69-557-36.dat"); #CO linewidth = 0.3, T_ex = 5
 const Nbin_nco = 47

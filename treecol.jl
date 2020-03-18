@@ -1,3 +1,4 @@
+push!(LOAD_PATH, pwd())
 using HDF5
 using StaticArrays
 using Statistics
@@ -50,7 +51,7 @@ function read_snap(filename)
     return N_gas, pos_gas, vel_gas, rho, u, m_gas, hsml, id_gas, boxsize, time
 end
 
-function vec2svec(vec::Matrix{T}) where {T}    
+function vec2svec(vec::Matrix{T}) where {T}
     svec = [SVector{3,T}(vec[:,i]) for i in 1:size(vec,2)]
 end
 function mat2smat(mat::Array{T,3}) where {T}
@@ -100,7 +101,7 @@ function solve_chem_all_particles()
     #push!(X,SVector(0.5,0.5,0.5))
 
     #file_path = "./"
-    file_path = "./isocloud_N1e4/"
+    file_path = "../../../Downloads/isocloud_N1e4/"
     #file_path = "./nH10_box150pc_S4_N1e6_myIC/"
     #file_path = "./nH1_box250pc_S2_N1e5_myIC/"
     snap = "013"
@@ -179,7 +180,7 @@ function solve_chem_all_particles()
             #@show NH, NH2, NCO, NC
             #if i==Npart
             #    ga_out = ga
-            #end            
+            #end
             ga_out[i] = ga
             NH_part[i] = NH
             NH2_part[i] = NH2
