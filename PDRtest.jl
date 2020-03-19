@@ -31,7 +31,7 @@ function test()
     Zp = 1.0
     abund = zeros(N_spec)
     dtime = 1e8
-    @time sol, rrates = solve_equilibrium_abundances(abund, dtime, nH, temp, 2.04e21, 8.75e19, 1.37e15, 8.28e16, ξ, IUV, Zp)
+    solve_equilibrium_abundances(abund, dtime, nH, temp, 2.04e21, 8.75e19, 1.37e15, 8.28e16, ξ, IUV, Zp)
 end
 x,rrates=test();
 
@@ -118,11 +118,13 @@ function runPDR()
         #ab_vs_x[i] = abund_eq
     end
 
+
     xbin = @. 10^(xmin + (xmax-xmin) * collect(0:Nbin-1) / (Nbin-1));
     N_H = NHbin
-    clf()
+    #clf()
     #fig = figure("", figsize=(12,8))
-    fig = figure("", figsize=(12,4))
+    #fig = figure("", figsize=(12,4))
+    fig, ax = PyPlot.subplots(1, 3, figsize=(12,4))
 
     abC_tot  = [sum(ab_vs_x[i] .* fac_C)  for i in 1:Nbin]
     abO_tot  = [sum(ab_vs_x[i] .* fac_O)  for i in 1:Nbin]
@@ -130,24 +132,24 @@ function runPDR()
     #abS_tot  = [sum(ab_vs_x[i] .* fac_S)  for i in 1:Nbin]
 
     xminp, xmaxp = 16., 23.
-    ax1 = subplot(131)
-    plot(xbin, 2 .*getindex.(ab_vs_x, dict["H2"]), "-"  , label="H2")  #H2
-    plot(xbin, getindex.(ab_vs_x, dict["H"]), "--" , label="H")  #H
-    plot(xbin, getindex.(ab_vs_x, dict["e-"]), ":"  , label="e-")  #e-
+    #ax1 = subplot(131)
+    ax[1].plot(xbin, 2 .*getindex.(ab_vs_x, dict["H2"]), "-"  , label="H2")  #H2
+    ax[1].plot(xbin, getindex.(ab_vs_x, dict["H"]), "--" , label="H")  #H
+    ax[1].plot(xbin, getindex.(ab_vs_x, dict["e-"]), ":"  , label="e-")  #e-
     #plot(xbin, N_H, ":"  , label="e-")  #e-
 
     #plot(xbin, N_H2./N_H, "-."  , label="NH2/NH")
     #plot(xbin, N_CO./N_H, ":"  , label="NCO/NH")
-    legend(loc="best", fontsize=9, ncol=1, frameon=false)
-    xscale("log")
-    yscale("log")
+    ax[1].legend(loc="best", fontsize=9, ncol=1, frameon=false)
+    ax[1].set_xscale("log")
+    ax[1].set_yscale("log")
     #axis([10^xmin, 10^xmax, 1e-3, 2])
-    axis([10.0^xminp, 10.0^xmaxp, 1e-6, 2])
+    ax[1].axis([10.0^xminp, 10.0^xmaxp, 1e-6, 2])
     #xlabel("Z'")
-    xlabel(xl)
-    ylabel("x_i")
-    grid(linestyle=":", linewidth=1)
-    ax2 = ax1.twiny()
+    ax[1].set_xlabel(xl)
+    ax[1].set_ylabel("x_i")
+    ax[1].grid(linestyle=":", linewidth=1)
+    ax2 = ax[1].twiny()
     Av = N_H .* 5.35e-22
     ax2.set_xlabel("Av")
     ax2.set_xlim((10.0^xminp, 10.0^xmaxp).*5.35e-22)
@@ -155,23 +157,23 @@ function runPDR()
     ax2.set_yscale("log")
 
     xminp, xmaxp = 20., 23.
-    ax1 = subplot(132)
+    #ax1 = subplot(132)
     #plot(Zbin, getindex.(ab_vs_Z, 5), "-")  #C+
-    plot(xbin, getindex.(ab_vs_x, dict["H+"]), "-" , label="H+")  #H
-    plot(xbin, getindex.(ab_vs_x, dict["H3+"]) , "--" , label="H3+")
-    plot(xbin, getindex.(ab_vs_x, dict["He+"]) , "-." , label="He+")
-    plot(xbin, getindex.(ab_vs_x, dict["O"])  , ":"  , label="O")   #O
-    plot(xbin, getindex.(ab_vs_x, dict["OH"]) , "-" , label="OH")  #OH
-    plot(xbin, getindex.(ab_vs_x, dict["O2"]) , "--" , label="O2")  #O2
-    plot(xbin, getindex.(ab_vs_x, dict["H2O"]), "-." , label="H2O") #H2O
-    legend(loc="best", fontsize=9, ncol=2, frameon=false)
-    xscale("log")
-    yscale("log")
-    axis([10.0^xminp, 10.0^xmaxp, 1e-11, 1e-3])
-    xlabel(xl)
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["H+"]), "-" , label="H+")  #H
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["H3+"]) , "--" , label="H3+")
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["He+"]) , "-." , label="He+")
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["O"])  , ":"  , label="O")   #O
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["OH"]) , "-" , label="OH")  #OH
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["O2"]) , "--" , label="O2")  #O2
+    ax[2].plot(xbin, getindex.(ab_vs_x, dict["H2O"]), "-." , label="H2O") #H2O
+    ax[2].legend(loc="best", fontsize=9, ncol=2, frameon=false)
+    ax[2].set_xscale("log")
+    ax[2].set_yscale("log")
+    ax[2].axis([10.0^xminp, 10.0^xmaxp, 1e-11, 1e-3])
+    ax[2].set_xlabel(xl)
     #ylabel("x_i")
-    grid(linestyle=":", linewidth=1)
-    ax2 = ax1.twiny()
+    ax[2].grid(linestyle=":", linewidth=1)
+    ax2 = ax[2].twiny()
     Av = N_H .* 5.35e-22
     ax2.set_xlabel("Av")
     ax2.set_xlim((10.0^xminp, 10.0^xmaxp).*5.35e-22)
@@ -179,30 +181,34 @@ function runPDR()
     ax2.set_yscale("log")
 
 
-    ax1 = subplot(133)
+    #ax1 = subplot(133)
     #plot(Zbin, getindex.(ab_vs_Z, 5), "-")  #C+
-    plot(xbin, getindex.(ab_vs_x, dict["C"])  , "-"  , label="C")   #C
-    plot(xbin, getindex.(ab_vs_x, dict["CO"]) , "--" , label="CO")  #CO
-    plot(xbin, getindex.(ab_vs_x, dict["C+"]) , "-." , label="C+")  #C+
-    plot(xbin, getindex.(ab_vs_x, dict["CH"]) , ":" , label="CH")  #CH
-    plot(xbin, getindex.(ab_vs_x, dict["CH2"]) , ":" , label="CH2")  #CH
-    legend(loc="best", fontsize=9, ncol=2, frameon=false)
-    xscale("log")
-    yscale("log")
-    axis([10.0^xminp, 10.0^xmaxp, 1e-11, 1e-3])
-    xlabel(xl)
-    grid(linestyle=":", linewidth=1)
+    ax[3].plot(xbin, getindex.(ab_vs_x, dict["C"])  , "-"  , label="C")   #C
+    ax[3].plot(xbin, getindex.(ab_vs_x, dict["CO"]) , "--" , label="CO")  #CO
+    ax[3].plot(xbin, getindex.(ab_vs_x, dict["C+"]) , "-." , label="C+")  #C+
+    ax[3].plot(xbin, getindex.(ab_vs_x, dict["CH"]) , ":" , label="CH")  #CH
+    ax[3].plot(xbin, getindex.(ab_vs_x, dict["CH2"]) , ":" , label="CH2")  #CH
+    ax[3].legend(loc="best", fontsize=9, ncol=2, frameon=false)
+    ax[3].set_xscale("log")
+    ax[3].set_yscale("log")
+    ax[3].axis([10.0^xminp, 10.0^xmaxp, 1e-11, 1e-3])
+    ax[3].set_xlabel(xl)
+    ax[3].grid(linestyle=":", linewidth=1)
     #ylabel("x_i")
-    ax2 = ax1.twiny()
+    ax2 = ax[3].twiny()
     Av = N_H .* 5.35e-22
     ax2.set_xlabel("Av")
     ax2.set_xlim((10.0^xminp, 10.0^xmaxp).*5.35e-22)
     ax2.set_xscale("log")
     ax2.set_yscale("log")
+    
+    #tight_layout()
+    savefig("PDR.png")
 
     return ab_vs_x, NHbin, NH2bin, NCObin, NCbin, reaction_rates
 end
-ab_vs_x, N_H, N_H2, N_CO, N_C, rr = runPDR();
+runPDR();
+#ab_vs_x, N_H, N_H2, N_CO, N_C, rr = runPDR();
 0
 
 
