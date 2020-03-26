@@ -1,5 +1,15 @@
 #module ChemistryNetwork
 
+export solve_equilibrium_abundances, calc_abund_derived, init_abund
+export calc_coeff!
+export kH2diss, kdust
+export dict
+export iH2,iCO,iC
+export fac_H, fac_C, fac_O, charge
+export abC_s, abO_s
+export N_spec, N_reac
+export Par
+
 using DelimitedFiles
 using Printf
 using StaticArrays
@@ -11,18 +21,10 @@ using DifferentialEquations
 #plotlyjs()
 using Interpolations
 using Parameters
+using Statistics
 
 using Sundials #for CVODE_BDF
 
-#=
-export solve_equilibrium_abundances, calc_abund_derived, init_abund
-export kH2diss, kdust
-export dict
-export iH2,iCO,iC
-export fac_H, fac_C, fac_O, charge
-export abC_s, abO_s
-export N_spec, N_reac
-=#
 
 include("shielding_functions.jl")
 include("init_umist.jl")
@@ -220,17 +222,17 @@ const fac_Fe = SVector{N_spec}(setup_conservation_arrays("Fe"))
 const charge = SVector{N_spec}(charge_a);
 
 
-@with_kw struct Par{T}
+@with_kw struct Par{NPIX,T}
     nH::T
     temp::T
     #xelec::T
-    NH::T
-    NH2::T
-    NCO::T
-    NC::T
     ξ::T
     IUV::T
     Zp::T
+    NH ::SVector{NPIX,T}
+    NH2::SVector{NPIX,T}
+    NCO::SVector{NPIX,T}
+    NC ::SVector{NPIX,T}
 end
 
 #re = Dict(num_a .=> collect(1:N_reac) );
@@ -238,11 +240,11 @@ end
 function calc_coeff!(coeff, par::Par, xelec)
     @unpack nH, temp, NH, NH2, NCO, NC, ξ, IUV, Zp = par
 
-    Av = NH * 5.35e-22
+    Av = NH .* 5.35e-22
     ξp = ξ / ξ0;
     for i in 1:N_reac
         if typ[i] == 1
-            coeff[i] = IUV * alpha[i] * exp(-gamma[i] * Av)
+            coeff[i] = IUV * alpha[i] * mean(@. exp(-gamma[i] * Av))
             #coeff[i] = IUV * exp(-38.0 * Zp) * alpha[i] * exp(-gamma[i] * Av)
         elseif typ[i] == 2
             coeff[i] = alpha[i] * ξp
@@ -284,8 +286,9 @@ function calc_coeff!(coeff, par::Par, xelec)
     coeff[re[1296]] = 2.58e-7 * (temp/300.)^(-0.5)
     =#
     #photodissociation
-    coeff[end]   = IUV * kH2diss * exp(-gamma_H2 * Av) * fH2selfshield(NH2)
-    coeff[end-1] = IUV * kCOdiss * exp(-gamma_CO * Av) * fCOselfshield(NCO,NH2)
+    coeff[end]   = IUV * kH2diss * mean(@. exp(-gamma_H2 * Av) * fH2selfshield(NH2))
+    coeff[end-1] = IUV * kCOdiss * mean(@. exp(-gamma_CO * Av) * fCOselfshield(NCO,NH2))
+    #coeff[end-1] = fCOselfshield(1.,1.)
 
     #grain processes
     coeff[end-2] = kdust * (temp / 100.)^0.5 * Zp
@@ -293,7 +296,7 @@ function calc_coeff!(coeff, par::Par, xelec)
     psi = 1e20 #large value will turn off grain recombination
     if grRec == true
         if xelec > 1e-20
-            psi = 1.7 * (IUV+1e-20) * exp(-1.87*Av) * sqrt(temp) / (nH * xelec)
+            psi = 1.7 * (IUV+1e-20) * mean(@. exp(-1.87*Av)) * sqrt(temp) / (nH * xelec)
         end
         psi = psi < 1e20 ? psi : 1e20
     end

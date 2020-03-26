@@ -18,7 +18,7 @@ include("ChemistryNetwork.jl")
 T = Float64
 const N = 3
 
-function test()
+function test(npix)
     nH = 100.
     temp = 50.0 #check!
     ξ = 1.3e-17 #H2
@@ -27,11 +27,16 @@ function test()
     abund = zeros(N_spec)
     dtime = 1e7
     NH, NH2, NCO, NC = 2.04e21, 8.75e19, 1.37e15, 8.28e16
-    par = Par(nH, temp, NH, NH2, NCO, NC, ξ, IUV, Zp)
+    #npix=1
+    par = Par(nH, temp, ξ, IUV, Zp,
+            SVector{npix,T}(ones(npix).*NH),
+            SVector{npix,T}(ones(npix).*NH2),
+            SVector{npix,T}(ones(npix).*NCO),
+            SVector{npix,T}(ones(npix).*NC))
     #solve_equilibrium_abundances(abund, dtime, nH, temp, 2.04e21, 8.75e19, 1.37e15, 8.28e16, ξ, IUV, Zp)
     solve_equilibrium_abundances(abund, dtime, par)
 end
-x,rrates=test();
+test(1);
 
 const Nbin = 200
 const xmin = 16.
@@ -93,7 +98,7 @@ function runPDR()
         #xneq[1] = xH2_eq[i]
         #xneq[2] = xHp_eq[i]
 
-        par = Par(nH, temp, NH, NH2, NCO, NC, ξ, IUV, Zp)
+        par = Par(nH, temp, ξ, IUV, Zp, SVector{1,T}(NH), SVector{1,T}(NH2), SVector{1,T}(NCO), SVector{1,T}(NC))
 
         #abund_eq, reaction_rates[i,:] =
         solve_equilibrium_abundances(ab_vs_x[i], dtime, par)

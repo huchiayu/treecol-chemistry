@@ -1,10 +1,15 @@
 module OctTree
 using StaticArrays
 using PyPlot
+using Healpix
+const NSIDE = 1
+const NPIX = 12*NSIDE^2
+
 
 export Node, TreeGather
 export buildtree, get_scatter_ngb_tree, get_gather_ngb_tree, treewalk, nearest
 export plot_quadtree, plot_treewalk
+export NSIDE, NPIX
 
 mutable struct PartData{N,T}
 	pos::SVector{N,T}
@@ -181,8 +186,6 @@ function get_distance2(a::SVector{N,T}, b::SVector{N,T}, boxsizes::SVector{N,T},
     ===#
 end
 
-using Healpix
-const NSIDE = 4
 res = Healpix.Resolution(NSIDE)
 
 function vec2pix(p)
@@ -202,7 +205,7 @@ mutable struct TreeGather{T}
 end
 
 #TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NSIDE^2*12),zeros(NSIDE^2*12),zeros(NSIDE^2*12),[],[])
-TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NSIDE^2*12),zeros(NSIDE^2*12),zeros(NSIDE^2*12))
+TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NPIX),zeros(NPIX),zeros(NPIX))
 
 #function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, boxsizes::SVector{N,T}) where {N,T}
 function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingangle::T, boxsizes::SVector{N,T}) where {N,T}
@@ -216,7 +219,7 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             dx = nearest.(node.center - p, boxsizes)
             ipix = vec2pix(dx)
             #ga.column_all[ipix] += node.mass
-            area = 4*pi/(NSIDE^2*12.) * sum(dx.^2)
+            area = 4*pi/NPIX * sum(dx.^2)
 			ga.column_all[ipix] += node.n.mass / area
 			ga.column_H2[ipix] += node.n.mass_H2 / area
             ga.column_CO[ipix] += node.n.mass_CO / area
@@ -235,7 +238,7 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
                 dx = nearest.(node.child[i].center - p, boxsizes)
                 ipix = vec2pix(dx)
                 #ga.column_all[ipix] += node.child[i].mass
-                area = 4*pi/(NSIDE^2*12.) * dist2
+                area = 4*pi/NPIX * dist2
                 ga.column_all[ipix] += node.child[i].n.mass / area
 				ga.column_H2[ipix] += node.child[i].n.mass_H2 / area
 				ga.column_CO[ipix] += node.child[i].n.mass_CO / area

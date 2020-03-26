@@ -10,14 +10,13 @@ using Random
 #import StatsBase
 
 #import Plots
-const NSIDE = 4
-using Healpix
 
 #include("OctTree.jl")
 using OctTree
-#include("ChemistryNetwork.jl")
-using ChemistryNetwork
+include("ChemistryNetwork.jl")
+#using ChemistryNetwork
 
+using Healpix
 
 
 T = Float64
@@ -137,7 +136,7 @@ function solve_chem_all_particles()
 
     #NH = NH2 = NCO = NC = 0.0 #don't declear here!! otherwise they won't be thread-safe
 
-    abund_all = [zeros(ChemistryNetwork.N_spec) for _ in 1:Npart]
+    abund_all = [zeros(N_spec) for _ in 1:Npart]
 
     for i in 1:Npart
         #abund = abund_all[:,1]
@@ -156,6 +155,7 @@ function solve_chem_all_particles()
     Nstep = 10
     time_max = 1e8 #unit = yr
     dt = time_max / Nstep
+    NCpix = zeros(NPIX)
 
     for j in 1:Nstep
         @. mass_H2 = mass * getindex(abund_all,iH2)
@@ -169,24 +169,30 @@ function solve_chem_all_particles()
         println("loop over particles...")
         #@time for i in 1:Npart
         @time @threads for i in 1:Npart
+            if i%100 == 0 print("  i=", i) end
             #i%100 == 0 ? println("i = ", i) : nothing
             ga = TreeGather{T}()
             treewalk(ga,X[i],tree,ANGLE,boxsizes)
             #column_all = (ga.column_all);
+            ga_out[i] = ga
             NH = median(ga.column_all) * fac_col
             NH2 = median(ga.column_H2) * fac_col
             NCO = median(ga.column_CO) * fac_col
             NC = 0.0
-            #@show NH, NH2, NCO, NC
-            #if i==Npart
-            #    ga_out = ga
-            #end
-            ga_out[i] = ga
             NH_part[i] = NH
             NH2_part[i] = NH2
-            #NCO_part[i] = NCO
-            NCO_part[i] = i
-            solve_equilibrium_abundances(abund_all[i], dt, nH[i], temp[i], NH, NH2, NCO, NC, ξ, IUV, Zp)
+            NCO_part[i] = NCO
+            #NH = ga.column_all .* fac_col
+            #NH2 = ga.column_H2 .* fac_col
+            #NCO = ga.column_CO .* fac_col
+
+            par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
+                SVector{NPIX,T}(ga.column_all .* fac_col),
+                SVector{NPIX,T}(ga.column_H2 .* fac_col),
+                SVector{NPIX,T}(ga.column_CO .* fac_col),
+                SVector{NPIX,T}(NCpix))
+
+            solve_equilibrium_abundances(abund_all[i], dt, par)
         end
         println("done!")
         tree_out = tree
