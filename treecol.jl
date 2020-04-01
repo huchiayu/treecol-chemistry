@@ -175,21 +175,21 @@ function solve_chem_all_particles()
             treewalk(ga,X[i],tree,ANGLE,boxsizes)
             #column_all = (ga.column_all);
             ga_out[i] = ga
-            NH = median(ga.column_all) * fac_col
-            NH2 = median(ga.column_H2) * fac_col
-            NCO = median(ga.column_CO) * fac_col
+            NH = ga.column_all .* fac_col
+            NH2 = ga.column_H2 .* fac_col
+            NCO = ga.column_CO .* fac_col
             NC = 0.0
-            NH_part[i] = NH
-            NH2_part[i] = NH2
-            NCO_part[i] = NCO
+            NH_med[i] = median(NH)
+            NH2_med[i] = median(NH2)
+            NCO_med[i] = median(NCO)
             #NH = ga.column_all .* fac_col
             #NH2 = ga.column_H2 .* fac_col
             #NCO = ga.column_CO .* fac_col
 
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
-                SVector{NPIX,T}(ga.column_all .* fac_col),
-                SVector{NPIX,T}(ga.column_H2 .* fac_col),
-                SVector{NPIX,T}(ga.column_CO .* fac_col),
+                SVector{NPIX,T}(NH),
+                SVector{NPIX,T}(NH2),
+                SVector{NPIX,T}(NCO),
                 SVector{NPIX,T}(NCpix))
 
             solve_equilibrium_abundances(abund_all[i], dt, par)
@@ -199,16 +199,16 @@ function solve_chem_all_particles()
 
         # write to file
         open(file_path * "/chem3D-N" * string(Npart) * "-" * string(j) *".out","w") do f
-            serialize(f, NH_part)
-            serialize(f, NH2_part)
-            serialize(f, NCO_part)
+            serialize(f, NH_med)
+            serialize(f, NH2_med)
+            serialize(f, NCO_med)
             serialize(f, abund_all)
             serialize(f, ga_out[Npart].column_all)
             serialize(f, X)
             serialize(f, dict)
         end
     end
-    return abund_all, ga_out, X, NH_part, NH2_part, NCO_part, tree_out
+    return abund_all, ga_out, X, NH_med, NH2_med, NCO_med, tree_out
 end
 
 abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles();

@@ -9,6 +9,7 @@ export fac_H, fac_C, fac_O, charge
 export abC_s, abO_s
 export N_spec, N_reac
 export Par
+export fH2selfshield, fCOselfshield
 
 using DelimitedFiles
 using Printf
@@ -19,7 +20,7 @@ using DifferentialEquations
 #using PyPlot  #can't use Interact with it
 #using Plots
 #plotlyjs()
-using Interpolations
+#using Interpolations
 using Parameters
 using Statistics
 
@@ -235,6 +236,20 @@ const charge = SVector{N_spec}(charge_a);
     NC ::SVector{NPIX,T}
 end
 
+const deff=1.0
+const dust_to_gas_ratio = 1.0
+const tdust = 15.
+const tdust2 = tdust * 1e-2
+const fa     = 1.0 / (1.0 + 1e4 * exp(-6e2 / tdust))
+
+function get_kdust(temp)
+    temp2  = temp * 1e-2
+
+    stick  = 1.0 / (1.0 + 0.4 * (temp2 + tdust2)^0.5 + 0.2 * temp2 + 0.08 * temp2^2)
+    ch7    = dust_to_gas_ratio * deff * 3e-17 * temp2^0.5
+    Rdust  = ch7 * fa * stick
+end
+
 #re = Dict(num_a .=> collect(1:N_reac) );
 #function calc_coeff!(coeff, temp, nH, NH, NH2, NCO, NC, xelec, ξp, IUV, Zp)
 function calc_coeff!(coeff, par::Par, xelec)
@@ -291,8 +306,8 @@ function calc_coeff!(coeff, par::Par, xelec)
     #coeff[end-1] = fCOselfshield(1.,1.)
 
     #grain processes
-    coeff[end-2] = kdust * (temp / 100.)^0.5 * Zp
-
+    #coeff[end-2] = kdust * (temp / 100.)^0.5 * Zp
+    coeff[end-2] = get_kdust(temp) * Zp
     psi = 1e20 #large value will turn off grain recombination
     if grRec == true
         if xelec > 1e-20

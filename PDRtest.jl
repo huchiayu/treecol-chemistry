@@ -1,4 +1,7 @@
 push!(LOAD_PATH, pwd())
+#import Pkg; Pkg.add("HDF5"); Pkg.add("StaticArrays"); Pkg.add("PyPlot"); 
+#Pkg.add("DifferentialEquations"); Pkg.add("Parameters"); Pkg.add("Sundials");
+
 using HDF5
 using StaticArrays
 using Statistics
@@ -61,7 +64,7 @@ function runPDR()
         ab_vs_x[i] = zeros(N_spec)
     end
     d_lnNH = (xmax-xmin) / (Nbin-1)
-    xbin = @. 10^(xmin + collect(0:Nbin-1) * d_lnNH)
+    xbin = 10 .^ (xmin .+ collect(0:Nbin-1) .* d_lnNH)
     NHbin = xbin
     dNH = NHbin[2:Nbin] .- NHbin[1:Nbin-1]
 
@@ -130,7 +133,7 @@ ab_vs_x, N_H, N_H2, N_CO, N_C, rr = runPDR();
 
 
 
-xbin = @. 10^(xmin + (xmax-xmin) * collect(0:Nbin-1) / (Nbin-1));
+xbin = 10 .^ (xmin .+ (xmax-xmin) .* collect(0:Nbin-1) ./ (Nbin-1));
 #N_H = NHbin
 #clf()
 #fig = figure("", figsize=(12,8))
