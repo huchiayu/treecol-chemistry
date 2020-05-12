@@ -192,7 +192,8 @@ function vec2pix(p)
     theta,phi = vec2ang(p[1],p[2],p[3])
     ang2pixRing(res, theta,phi)
 end
-const ANGLE = 0.6
+#const ANGLE = 0.7
+const ShieldingLength = 0.1
 
 mutable struct TreeGather{T}
     mass::T
@@ -217,14 +218,17 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             #println("nonempty leaf")
             ga.mass += node.n.mass
             dx = nearest.(node.center - p, boxsizes)
-            ipix = vec2pix(dx)
-            #ga.column_all[ipix] += node.mass
-            area = 4*pi/NPIX * sum(dx.^2)
-			ga.column_all[ipix] += node.n.mass / area
-			ga.column_H2[ipix] += node.n.mass_H2 / area
-            ga.column_CO[ipix] += node.n.mass_CO / area
-            #push!(ga.nodecenters, node.p.pos)
-            #push!(ga.nodelengths, zeros(N))
+			dist2 = sum(dx.^2)
+			if dist2 < ShieldingLength^2
+	            ipix = vec2pix(dx)
+	            #ga.column_all[ipix] += node.mass
+	            area = 4*pi/NPIX * dist2
+				ga.column_all[ipix] += node.n.mass / area
+				ga.column_H2[ipix] += node.n.mass_H2 / area
+	            ga.column_CO[ipix] += node.n.mass_CO / area
+	            #push!(ga.nodecenters, node.p.pos)
+	            #push!(ga.nodelengths, zeros(N))
+			end
             #@show "it's a particle..." node.center, node.length
             #dist2 = get_distance2(node.part, p, boxsizes, true)
         end
@@ -234,16 +238,18 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             dist2 = get_distance2(node.child[i].center, p, boxsizes, true)
             if dist2 > (node.child[i].length[1] / openingangle)^2
                 #println("skip node ", i)
-                ga.mass += node.child[i].n.mass
-                dx = nearest.(node.child[i].center - p, boxsizes)
-                ipix = vec2pix(dx)
-                #ga.column_all[ipix] += node.child[i].mass
-                area = 4*pi/NPIX * dist2
-                ga.column_all[ipix] += node.child[i].n.mass / area
-				ga.column_H2[ipix] += node.child[i].n.mass_H2 / area
-				ga.column_CO[ipix] += node.child[i].n.mass_CO / area
-                #push!(ga.nodecenters, node.child[i].center)
-                #push!(ga.nodelengths, node.child[i].length)
+				if dist2 < ShieldingLength^2
+	                ga.mass += node.child[i].n.mass
+	                dx = nearest.(node.child[i].center - p, boxsizes)
+	                ipix = vec2pix(dx)
+	                #ga.column_all[ipix] += node.child[i].mass
+	                area = 4*pi/NPIX * dist2
+	                ga.column_all[ipix] += node.child[i].n.mass / area
+					ga.column_H2[ipix] += node.child[i].n.mass_H2 / area
+					ga.column_CO[ipix] += node.child[i].n.mass_CO / area
+	                #push!(ga.nodecenters, node.child[i].center)
+	                #push!(ga.nodelengths, node.child[i].length)
+				end
                 #@show "use this node!" node.child[i].center, node.child[i].length
                 @goto escape_label
             end

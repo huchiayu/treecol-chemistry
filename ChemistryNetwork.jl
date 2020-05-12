@@ -234,6 +234,7 @@ const charge = SVector{N_spec}(charge_a);
     NH2::SVector{NPIX,T}
     NCO::SVector{NPIX,T}
     NC ::SVector{NPIX,T}
+    xneq::SVector{N_neq,T}
 end
 
 const deff=1.0
@@ -339,13 +340,13 @@ function calc_coeff!(coeff, par::Par, xelec)
     #if fCselfshield(NC,NH2) < 0.1 @show NC, NH2, NCO end
 end
 
-function init_abund(abund, Zp)
-    calc_abund_derived(abund, Zp)
-    abund[iH]=0.4
-    abund[iH2]=0.3
+function init_abund(abund, Zp, xneq)
+    #abund[dict["C+"]] = 1.0
+    abund[dict["O"]] = 1.0
+    calc_abund_derived(abund, Zp, xneq)
 end
 
-function calc_abund_derived(abund, Zp)
+function calc_abund_derived(abund, Zp, xneq)
     if NONEQ
         for i in 1:N_neq
             abund[ineq[i]] = xneq[i]
@@ -400,14 +401,14 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     coeff = zeros(N_reac)
     reac_rates = zeros(N_reac)
 
-    @unpack nH, Zp = par
+    @unpack nH, Zp, xneq = par
     #we use closure s.t. large arrays like coeff & reac_rates can be updated in-place
     function calc_abund_dot_closure(abund_dot_int, abund_int, ppp, t)
 
         abund_dot .= 0.0 #in-place for better performance
 
         abund[idx_integrate] .= abund_int
-        calc_abund_derived(abund, Zp)
+        calc_abund_derived(abund, Zp, xneq)
 
         #calc_coeff!(coeff, temp, nH, NH, NH2, NCO, NC, abund[ielec], ξp, IUV, Zp) #zero allocation
         calc_coeff!(coeff, par, abund[ielec]) #zero allocation
@@ -462,12 +463,12 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     prob = ODEProblem(calc_abund_dot_closure, abund_con, tspan)
     #sol = solve(prob, Rosenbrock23(autodiff=false), reltol=1e-9, abstol=1e-9);
     #sol = solve(prob, CVODE_BDF(), reltol=1e-7, abstol=1e-7);
-    sol = solve(prob, reltol=1e-7, abstol=1e-7);
+    sol = solve(prob, reltol=1e-7, abstol=1e-7, maxiters=1e5);
     #sol = solve(prob, isoutofdomain=(u,p,t)->any(x->x<0,u), reltol=1e-9, abstol=1e-9);
     #cb = ManifoldProjection(g)
     #sol = solve(prob, Rosenbrock23(autodiff=false), save_everystep=false, callback=cb)
     abund_final[idx_integrate] .= sol.u[end]
-    calc_abund_derived(abund_final, Zp)
+    calc_abund_derived(abund_final, Zp, xneq)
 
     abund .= abund_final
     return abund_final, reac_rates

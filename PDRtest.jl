@@ -1,5 +1,5 @@
 push!(LOAD_PATH, pwd())
-#import Pkg; Pkg.add("HDF5"); Pkg.add("StaticArrays"); Pkg.add("PyPlot"); 
+#import Pkg; Pkg.add("HDF5"); Pkg.add("StaticArrays"); Pkg.add("PyPlot");
 #Pkg.add("DifferentialEquations"); Pkg.add("Parameters"); Pkg.add("Sundials");
 
 using HDF5
@@ -30,12 +30,15 @@ function test(npix)
     abund = zeros(N_spec)
     dtime = 1e7
     NH, NH2, NCO, NC = 2.04e21, 8.75e19, 1.37e15, 8.28e16
+    xneq = SVector{0,T}([])
+    #xneq = SVector{1,T}([0.499])
     #npix=1
     par = Par(nH, temp, ξ, IUV, Zp,
             SVector{npix,T}(ones(npix).*NH),
             SVector{npix,T}(ones(npix).*NH2),
             SVector{npix,T}(ones(npix).*NCO),
-            SVector{npix,T}(ones(npix).*NC))
+            SVector{npix,T}(ones(npix).*NC),
+            xneq)
     #solve_equilibrium_abundances(abund, dtime, nH, temp, 2.04e21, 8.75e19, 1.37e15, 8.28e16, ξ, IUV, Zp)
     solve_equilibrium_abundances(abund, dtime, par)
 end
@@ -100,8 +103,9 @@ function runPDR()
 
         #xneq[1] = xH2_eq[i]
         #xneq[2] = xHp_eq[i]
-
-        par = Par(nH, temp, ξ, IUV, Zp, SVector{1,T}(NH), SVector{1,T}(NH2), SVector{1,T}(NCO), SVector{1,T}(NC))
+        xneq = SVector{0,T}([])
+        #xneq = SVector{1,T}([0.499])
+        par = Par(nH, temp, ξ, IUV, Zp, SVector{1,T}(NH), SVector{1,T}(NH2), SVector{1,T}(NCO), SVector{1,T}(NC), xneq)
 
         #abund_eq, reaction_rates[i,:] =
         solve_equilibrium_abundances(ab_vs_x[i], dtime, par)
@@ -109,7 +113,7 @@ function runPDR()
 
         #abund_eq, reaction_rates[i,:] = solve_equilibrium_abundances(100., 100., 1e20, 1e18, 1e10, 1e12, ξ, IUV, Zp)
 
-        calc_abund_derived(ab_vs_x[i], Zp)
+        calc_abund_derived(ab_vs_x[i], Zp, xneq)
         sumH  = sum( ab_vs_x[i] .* fac_H )
         sumC  = sum( ab_vs_x[i] .* fac_C )
         sumO  = sum( ab_vs_x[i] .* fac_O )

@@ -47,7 +47,19 @@ function read_snap(filename)
 
     id_gas::Vector{Int64} = h5read(filename, "PartType0/ParticleIDs");
 
-    return N_gas, pos_gas, vel_gas, rho, u, m_gas, hsml, id_gas, boxsize, time
+    abund::Matrix{T} = h5read(filename, "PartType0/ChemicalAbundancesSG");
+    fH2::Vector{T}    = h5read(filename, "PartType0/ShieldingFactorH2");
+    fdust::Vector{T}    = h5read(filename, "PartType0/ShieldingFactorDust");
+
+    col_tot::Matrix{T}    = h5read(filename, "PartType0/TreecolColumnDensitiesAll");
+    col_H2::Matrix{T}    = h5read(filename, "PartType0/TreecolColumnDensitiesH2");
+    col_CO::Matrix{T}    = h5read(filename, "PartType0/TreecolColumnDensitiesCO");
+
+    Tdust::Vector{T}    = h5read(filename, "PartType0/DustTemperature");
+
+    return N_gas, pos_gas, vel_gas, rho, u, m_gas, hsml, id_gas,
+        abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
+        boxsize, time
 end
 
 function vec2svec(vec::Matrix{T}) where {T}
@@ -76,7 +88,7 @@ const N=3
 #const boxsizes = SVector(1.0, 1.0, 1.0) .* (BOXSIZE*2.0)
 #const boxsizes = SVector(1.0, 1.0, 1.0) .* (BOXSIZE)
 
-const ANGLE = 0.3
+const ANGLE = 0.7
 
 const XH = 0.71
 const BOLTZMANN=1.3806e-16
@@ -100,21 +112,41 @@ function solve_chem_all_particles()
     #push!(X,SVector(0.5,0.5,0.5))
 
     #file_path = "./"
-    file_path = "../../../Downloads/isocloud_N1e4/"
-    #file_path = "./nH10_box150pc_S4_N1e6_myIC/"
-    #file_path = "./nH1_box250pc_S2_N1e5_myIC/"
-    snap = "013"
+    #file_path = "../../../simulations/isocloud_N1e4/"
+    file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
+    snap = "1000"
     filename = file_path * "/snap_" * snap * ".hdf5"
-    Npart, pos, vel, rho, u, mass, hsml, id_gas, boxsize, time = read_snap(filename);
-    X = vec2svec(pos);
+    Npart, pos, vel, rho, u, mass, hsml, id_gas,
+        abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
+        boxsize, time = read_snap(filename);
+    println("boxsize = ", boxsize)
     boxsizes = SVector(1.0, 1.0, 1.0) .* (boxsize)
+    #boxsizes = SVector(1.0, 1.0, 10.0) .* (boxsize)
+    pos[3,:] .+= 0.5
 
+
+    #down-sampling
+    #=
+    Ns::Int = 100
+    rng = MersenneTwister(1234);
+    ridx = randperm(rng, Npart);
+    Npart = div(Npart,Ns)
+    ridx = ridx[1:Npart]
+    pos=pos[:,ridx]
+    vel=vel[:,ridx]
+    rho=rho[ridx]
+    u=u[ridx]
+    mass=mass[ridx]
+    hsml=hsml[ridx]
+    id_gas=id_gas[ridx]
+    abund=abund[:,ridx]
+    mass .*= Ns
+    =#
+
+    X = vec2svec(pos);
     #X .*= BOXSIZE
     #push!(X,SVector(0.,0.,0.) .+ 0.01)
 
-
-    #nH = 1000.
-    #temp = 50.
     ξ = 1.3e-16 #H2
     IUV = 1.0
     Zp = 1.0
@@ -138,22 +170,28 @@ function solve_chem_all_particles()
 
     abund_all = [zeros(N_spec) for _ in 1:Npart]
 
+
     for i in 1:Npart
         #abund = abund_all[:,1]
-        init_abund(abund_all[i], Zp)
+        #xneq = SVector{1,T}([abund[1,i]])
+        xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
+        #use C+ & CO from simulations as the initial guess
+        #abund_all[i][dict["CO"]] = abund[3,i]
+        #abund_all[i][dict["C+"]] = abC_s * Zp - abund_all[i][dict["CO"]]
+        init_abund(abund_all[i], Zp, xneq)
     end
 
     #hsml = ones(Npart) .* (0.5 * boxsizes[1])
-    NH_part = zeros(Npart)
-    NH2_part = zeros(Npart)
-    NCO_part = zeros(Npart)
+    NH_med = zeros(Npart)
+    NH2_med = zeros(Npart)
+    NCO_med = zeros(Npart)
     #ga_out = TreeGather{T}()
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
     tree_out = nothing
 
     #ITER = 1
-    Nstep = 10
-    time_max = 1e8 #unit = yr
+    Nstep = 5
+    time_max = 1e9 #unit = yr
     dt = time_max / Nstep
     NCpix = zeros(NPIX)
 
@@ -169,6 +207,7 @@ function solve_chem_all_particles()
         println("loop over particles...")
         #@time for i in 1:Npart
         @time @threads for i in 1:Npart
+            if nH[i] < 1.0 || temp[i] > 3e3 continue end
             if i%100 == 0 print("  i=", i) end
             #i%100 == 0 ? println("i = ", i) : nothing
             ga = TreeGather{T}()
@@ -182,29 +221,34 @@ function solve_chem_all_particles()
             NH_med[i] = median(NH)
             NH2_med[i] = median(NH2)
             NCO_med[i] = median(NCO)
+            #if median(NH) > 0
+            #    @show ga.column_all, ga.column_H2, ga.column_CO
+            #end
             #NH = ga.column_all .* fac_col
             #NH2 = ga.column_H2 .* fac_col
             #NCO = ga.column_CO .* fac_col
+            xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
 
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
                 SVector{NPIX,T}(NH),
                 SVector{NPIX,T}(NH2),
                 SVector{NPIX,T}(NCO),
-                SVector{NPIX,T}(NCpix))
-
+                SVector{NPIX,T}(NCpix), xneq)
+            #dt = 1e9 / (Zp * nH[i]) #in years
             solve_equilibrium_abundances(abund_all[i], dt, par)
         end
         println("done!")
         tree_out = tree
 
         # write to file
-        open(file_path * "/chem3D-N" * string(Npart) * "-" * string(j) *".out","w") do f
+        open(file_path * "/chem3D-neqH2Hp-" * string(j) *".out","w") do f
             serialize(f, NH_med)
             serialize(f, NH2_med)
             serialize(f, NCO_med)
             serialize(f, abund_all)
-            serialize(f, ga_out[Npart].column_all)
-            serialize(f, X)
+            #serialize(f, ga_out[Npart].column_all)
+            serialize(f, rho)
+            serialize(f, u)
             serialize(f, dict)
         end
     end
@@ -213,15 +257,7 @@ end
 
 abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles();
 0
-#=
-xmin=-2
-xmax=3
-ymin=1
-ymax=7
-cc,xb,yb,im=hist2D(log10.(rho.*404), log10.(u.*100), bins=[100,100], range=[[xmin, xmax],[ymin, ymax]])
-clf()
-imshow(transpose(log10.(cc)), origin="lower", extent=(xmin, xmax, ymin, ymax))
-=#
+
 
 #=
 clf()
@@ -251,49 +287,8 @@ gcf()
 =#
 
 
-#=
-fig = figure("", figsize=(12,8))
-subplot(121)
-plot(r,getindex.(abund_all,dict["C+"]),".",ms=1)
-plot(r,getindex.(abund_all,dict["C"]) ,".",ms=1)
-plot(r,getindex.(abund_all,dict["CO"]),".",ms=1)
-xscale("log")
-yscale("log")
-xlabel("radius [pc]")
-ylabel("x_i")
-
-subplot(122)
-plot(NH,getindex.(abund_all,dict["C+"]),".",ms=1)
-plot(NH,getindex.(abund_all,dict["C"]) ,".",ms=1)
-plot(NH,getindex.(abund_all,dict["CO"]),".",ms=1)
-xscale("log")
-yscale("log")
-xlabel("NH [cm^-2]")
-ylabel("x_i")
-
-savefig("PDR.png")
-
-=#
-
-# write to file
-#=
-using Serialization
-open("PDR3D.out","w") do f
-    serialize(f, NH)
-    serialize(f, NH2)
-    serialize(f, NCO)
-    serialize(f, abund_all)
-    serialize(f, ga.column_all)
-    serialize(f, X)
-    serialize(f, dict)
-end
-=#
-
 #===
 p = boxsizes .* 0.5
-
-#ga = TreeGather{T}(0,zeros(NSIDE^2*12),zeros(NSIDE^2*12),zeros(NSIDE^2*12),[],[])
-
 
 m = Map{Float64, RingOrder}(NSIDE);
 m.pixels[:] = log10.(column_all)
