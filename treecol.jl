@@ -113,6 +113,7 @@ function solve_chem_all_particles()
 
     #file_path = "./"
     #file_path = "../../../simulations/isocloud_N1e4/"
+    #snap = "013"
     file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
     snap = "1000"
     filename = file_path * "/snap_" * snap * ".hdf5"
@@ -178,6 +179,9 @@ function solve_chem_all_particles()
         #use C+ & CO from simulations as the initial guess
         #abund_all[i][dict["CO"]] = abund[3,i]
         #abund_all[i][dict["C+"]] = abC_s * Zp - abund_all[i][dict["CO"]]
+        #initial guess for H2 & H+ (useful for calcultating steady state H2)
+        abund_all[i][dict["H2"]] = abund[1,i]
+        abund_all[i][dict["H+"]] = abund[2,i]
         init_abund(abund_all[i], Zp, xneq)
     end
 

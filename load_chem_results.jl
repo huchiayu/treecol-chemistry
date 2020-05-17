@@ -37,8 +37,8 @@ function read_snap(filename)
 end
 
 num = "1000"
-#file_path = "../../../simulations/isocloud_N1e4/"
-file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
+file_path = "../../../simulations/isocloud_N1e4/"
+#file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
 
 #Ngas, pos, vel, rho, u, mass, hsml, id,
 #abund, fH2ss, fH2dust, col_tot, col_H2, col_CO, Tdust, boxsize, time =
