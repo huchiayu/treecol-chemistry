@@ -456,17 +456,18 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         end #zero allocation
         abund_dot_int .= abund_dot[idx_integrate]
     end
+
     #tend = SEC_PER_YEAR * 1e10 / Zp / nH
     tend = SEC_PER_YEAR * dtime
     tspan = (0.0, tend)
     abund_con .= abund[idx_integrate] #can't use idx_integrate
     prob = ODEProblem(calc_abund_dot_closure, abund_con, tspan)
-    #sol = solve(prob, Rosenbrock23(autodiff=false), reltol=1e-9, abstol=1e-9);
-    #sol = solve(prob, CVODE_BDF(), reltol=1e-7, abstol=1e-7);
-    sol = solve(prob, reltol=1e-7, abstol=1e-7, maxiters=1e5);
-    #sol = solve(prob, isoutofdomain=(u,p,t)->any(x->x<0,u), reltol=1e-9, abstol=1e-9);
-    #cb = ManifoldProjection(g)
-    #sol = solve(prob, Rosenbrock23(autodiff=false), save_everystep=false, callback=cb)
+    sol = solve(prob,
+        alg_hints=[:stiff],
+        reltol=1e-9, abstol=1e-9,
+        isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
+        #isoutofdomain=(y,p,t)->speciesoutofbound(abund,Zp),
+        save_everystep=false);
     abund_final[idx_integrate] .= sol.u[end]
     calc_abund_derived(abund_final, Zp, xneq)
 
@@ -474,4 +475,50 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     return abund_final, reac_rates
 end
 
+
 #end
+
+#=
+function speciesoutofbound(abund,Zp)
+    tol=1e-2
+    for i in 1:N_spec
+        if iH > 0 && fac_H[i] > 0
+            if abs(abund[i] * fac_H[i] - 0.5) > 0.5 + tol
+                println("species out of bound: H, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+        if iHe > 0 && fac_He[i] > 0
+            if abs(abund[i] * fac_He[i] / XHe - 0.5) > (0.5 + tol)
+                println("species out of bound: He, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+        if iC > 0 && fac_C[i] > 0
+            if abs(abund[i] * fac_C[i] / (abC_s*Zp) - 0.5) > (0.5 + tol)
+                println("species out of bound: C, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+        if iO > 0 && fac_O[i] > 0
+            if abs(abund[i] * fac_O[i] / (abO_s*Zp) - 0.5) > (0.5 + tol)
+                println("species out of bound: O, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+        if iS > 0 && fac_S[i] > 0
+            if abs(abund[i] * fac_S[i] / (abS_s*Zp) - 0.5) > (0.5 + tol)
+                println("species out of bound: S, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+        if iSi > 0 && fac_Si[i] > 0
+            if abs(abund[i] * fac_Si[i] / (abSi_s*Zp) - 0.5) > (0.5 + tol)
+                println("species out of bound: Si, species=", all_species[i], "  abund=", abund[i])
+                return true
+            end
+        end
+    end
+    return false
+end
+=#
