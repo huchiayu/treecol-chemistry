@@ -181,7 +181,6 @@ function vec2pix(p)
     ang2pixRing(res, theta,phi)
 end
 #const ANGLE = 0.7
-const ShieldingLength = 0.1
 
 mutable struct TreeGather{T}
     mass::T
@@ -196,8 +195,8 @@ end
 #TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NSIDE^2*12),zeros(NSIDE^2*12),zeros(NSIDE^2*12),[],[])
 TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NPIX),zeros(NPIX),zeros(NPIX))
 
-#function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, boxsizes::SVector{N,T}) where {N,T}
-function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingangle::T, boxsizes::SVector{N,T}) where {N,T}
+#when changing the argument of treewalk, remember to also change the recursive treewalk call inside the function body!
+function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingangle::T, shieldinglength::T, boxsizes::SVector{N,T}) where {N,T}
     if isLeaf(node)
         #println("in a leaf node")
         if node.p == nothing
@@ -208,7 +207,7 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             dx = nearest.(node.p.pos - p, boxsizes)
 			dist2 = sum(dx.^2)
 			#@show dist2, node.p.pos, p
-			if 0.0 < dist2 < ShieldingLength^2  #exclude self contribution (dist2=0)
+			if 0.0 < dist2 < shieldinglength^2  #exclude self contribution (dist2=0)
 	            ipix = vec2pix(dx)
 	            #ga.column_all[ipix] += node.mass
 	            area = 4*pi/NPIX * dist2
@@ -227,7 +226,7 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             dist2 = get_distance2(node.child[i].n.pos_c, p, boxsizes, true)
             if dist2 > (node.child[i].length[1] / openingangle)^2
                 #println("skip node ", i)
-				if dist2 < ShieldingLength^2
+				if dist2 < shieldinglength^2
 	                ga.mass += node.child[i].n.mass
 	                dx = nearest.(node.child[i].n.pos_c - p, boxsizes)
 	                ipix = vec2pix(dx)
@@ -244,7 +243,7 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             end
             #println("open this node")
             #@show "!!!", m
-            treewalk(ga, p, node.child[i], openingangle, boxsizes)
+            treewalk(ga, p, node.child[i], openingangle, shieldinglength, boxsizes)
             @label escape_label
         end
     end

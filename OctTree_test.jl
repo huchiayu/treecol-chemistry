@@ -19,6 +19,7 @@ using PyPlot
 const BOXSIZE_X = BOXSIZE_Y = BOXSIZE_Z = 1.0
 
 const ANGLE = 0.7
+const ShieldingLength = 0.1
 
 N=3
 T=Float64
@@ -120,7 +121,8 @@ function test(X::Vector{SVector{N,T}}) where {N,T}
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
     @time for i in 1:Npart
         ga = TreeGather{T}()
-        treewalk(ga,X[i],tree,ANGLE,boxsizes)
+        treewalk(ga, X[i], tree, ANGLE, ShieldingLength, boxsizes)
+        #treewalk(ga,X[i], tree, ANGLE, boxsizes)
         #column_all = (ga.column_all);
         ga_out[i] = ga
     end
