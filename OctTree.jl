@@ -1,6 +1,5 @@
 module OctTree
 using StaticArrays
-using PyPlot
 using Healpix
 const NSIDE = 1
 const NPIX = 12*NSIDE^2
@@ -8,7 +7,7 @@ const NPIX = 12*NSIDE^2
 
 export Node, TreeGather
 export buildtree, get_scatter_ngb_tree, get_gather_ngb_tree, treewalk, nearest
-export plot_quadtree, plot_treewalk
+#export plot_quadtree, plot_treewalk, mycircle, plot_circles_scatter_ngbs
 export NSIDE, NPIX
 
 mutable struct PartData{N,T}
@@ -23,7 +22,7 @@ end
 PartData{N,T}() where {N,T} = PartData{N,T}(zero(SVector{N,T}),0,0,0,0,0)
 
 mutable struct NodeData{N,T} #auxiliary data carried by treenodes
-	com::SVector{N,T} #center of mass
+	pos_c::SVector{N,T} #center of mass
 	max_hsml::T  #for scatter ngb search
 	mass::T
 	mass_H2::T
@@ -81,7 +80,9 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
     if isLeaf(node)
         if node.p == nothing
             #println("at an empty leaf, insert particle and we're done")
+			node.n.pos_c = p.pos
             node.p = p
+			#@show "empty leaf!!!", node.n.mass, p.mass, node.p.pos, node.n.pos_c
 			node.n.max_hsml = p.hsml
 			node.n.mass = p.mass
 			node.n.mass_H2 = p.mass_H2
@@ -107,7 +108,11 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
             #println("insert back the preexsisting particle...")
             #insertpart!(node.part, node.part_idx, node.max_hsml, node.mass, node.child[getChildIndex(node.part, node)])
 			insertpart!(node.p, node.child[getChildIndex(node.p.pos, node)])
-            node.n.mass += p.mass #this line has to be put after the above line, otherwise we're inserting back the wrong node.mass!!!
+			masssum = node.n.mass + p.mass
+			inv_masssum = 1.0 / masssum
+			node.n.pos_c = (node.n.mass .* node.n.pos_c .+ p.mass .* p.pos) .* inv_masssum
+			#@show "non-empty leaf!!!", node.n.mass, p.mass, sum((node.n.pos_c - p.pos).^2)^0.5 / node.length[1]
+            node.n.mass = masssum #this line has to be put after insertpart!, otherwise we're inserting back the wrong node.mass!!!
 			node.n.mass_H2 += p.mass_H2
 			node.n.mass_CO += p.mass_CO
             #println("insert the new particle...")
@@ -118,34 +123,17 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
         if p.hsml > node.n.max_hsml
             node.n.max_hsml = p.hsml
         end
-        node.n.mass += p.mass
+		masssum = node.n.mass + p.mass
+		inv_masssum = 1.0 / masssum
+		node.n.pos_c = (node.n.mass .* node.n.pos_c .+ p.mass .* p.pos) .* inv_masssum
+		#@show "nonleaf!!!", node.n.mass, p.mass, sum((node.n.pos_c - p.pos).^2)^0.5 / node.length[1]
+        node.n.mass = masssum
 		node.n.mass_H2 += p.mass_H2
 		node.n.mass_CO += p.mass_CO
         insertpart!(p, node.child[getChildIndex(p.pos,node)])
     end
 end
 
-function plot_quadtree(node::Node{N,T}, ix, iy) where {N,T}
-    #println("center=", node.center)
-    #println("length=", node.length)
-    if N<2 println("N must be >= 2")
-        return
-    end
-    xmin = node.center[ix] - 0.5*node.length[ix]
-    xmax = node.center[ix] + 0.5*node.length[ix]
-    ymin = node.center[iy] - 0.5*node.length[iy]
-    ymax = node.center[iy] + 0.5*node.length[iy]
-    color="grey"
-    plot([xmin,xmin],[ymin,ymax], c=color)
-    plot([xmin,xmax],[ymin,ymin], c=color)
-    plot([xmax,xmax],[ymin,ymax], c=color)
-    plot([xmin,xmax],[ymax,ymax], c=color)
-    if node.child != nothing
-        for i in 1:2^N
-            plot_quadtree(node.child[i], ix, iy)
-        end
-    end
-end
 
 #const boxHalf_X = 0.5
 
@@ -217,9 +205,10 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
         else
             #println("nonempty leaf")
             ga.mass += node.n.mass
-            dx = nearest.(node.center - p, boxsizes)
+            dx = nearest.(node.p.pos - p, boxsizes)
 			dist2 = sum(dx.^2)
-			if dist2 < ShieldingLength^2
+			#@show dist2, node.p.pos, p
+			if 0.0 < dist2 < ShieldingLength^2  #exclude self contribution (dist2=0)
 	            ipix = vec2pix(dx)
 	            #ga.column_all[ipix] += node.mass
 	            area = 4*pi/NPIX * dist2
@@ -235,12 +224,12 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
     else
         #println("This is a node... check its children")
         for i in 1:2^N
-            dist2 = get_distance2(node.child[i].center, p, boxsizes, true)
+            dist2 = get_distance2(node.child[i].n.pos_c, p, boxsizes, true)
             if dist2 > (node.child[i].length[1] / openingangle)^2
                 #println("skip node ", i)
 				if dist2 < ShieldingLength^2
 	                ga.mass += node.child[i].n.mass
-	                dx = nearest.(node.child[i].center - p, boxsizes)
+	                dx = nearest.(node.child[i].n.pos_c - p, boxsizes)
 	                ipix = vec2pix(dx)
 	                #ga.column_all[ipix] += node.child[i].mass
 	                area = 4*pi/NPIX * dist2
@@ -353,52 +342,6 @@ function buildtree(X::Vector{SVector{N,T}}, hsml::Vector{T},
 		insertpart!(part, tree)
     end
     return tree
-end
-
-function plot_circles_scatter_ngbs(X::Vector{SVector{N,T}}, hsml::Vector{T}, boxsizes::SVector{N,T}) where {N,T}
-    for i in eachindex(X)
-        mycircle(hsml[i], X[i][1], X[i][2], 0.5*boxsizes[1], 0.5*boxsizes[2], boxsizes[1], boxsizes[2], "green")
-    end
-end
-
-function mycircle(r, xc, yc, x0, y0, boxsizeX, boxsizeY, color)
-    #xc=1.5;yc=2.5;r=0.5
-    x = collect(-r : 0.0001*r : r)
-    y = sqrt.( r.^2 .- x.^2 )
-    xx = x.+xc
-    yy = y.+yc
-    #x0 = 0.5*boxHalf_X # coordinates for the center of box
-    #y0 = 0.5*boxHalf_Y # coordinates for the center of box
-    xx[xx .> x0+boxsizeX*0.5] .-= boxsizeX
-    xx[xx .< x0-boxsizeX*0.5] .+= boxsizeX
-    yy[yy .> y0+boxsizeY*0.5] .-= boxsizeY
-    yy[yy .< y0-boxsizeY*0.5] .+= boxsizeY
-    scatter(xx,yy,marker=".",c=color,s=0.03)
-    xx = x.+xc
-    yy = -y.+yc
-    xx[xx .> x0+boxsizeX*0.5] .-= boxsizeX
-    xx[xx .< x0-boxsizeX*0.5] .+= boxsizeX
-    yy[yy .> y0+boxsizeY*0.5] .-= boxsizeY
-    yy[yy .< y0-boxsizeY*0.5] .+= boxsizeY
-    scatter(xx,yy,marker=".",c=color,s=0.03)
-end
-
-function plot_treewalk(ga::TreeGather{T},ix,iy) where {T}
-    for i in eachindex(ga.nodecenters)
-        if ga.nodelengths[i][1] == 0
-            #plot(ga.nodecenters[i][ix], ga.nodecenters[i][iy], ".", c="red")
-        else
-            xmin = ga.nodecenters[i][ix] - 0.5*ga.nodelengths[i][ix]
-            xmax = ga.nodecenters[i][ix] + 0.5*ga.nodelengths[i][ix]
-            ymin = ga.nodecenters[i][iy] - 0.5*ga.nodelengths[i][iy]
-            ymax = ga.nodecenters[i][iy] + 0.5*ga.nodelengths[i][iy]
-            color="green"
-            plot([xmin,xmin],[ymin,ymax], c=color)
-            plot([xmin,xmax],[ymin,ymin], c=color)
-            plot([xmax,xmax],[ymin,ymax], c=color)
-            plot([xmin,xmax],[ymax,ymax], c=color)
-        end
-    end
 end
 
 end #module OctTree
