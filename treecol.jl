@@ -19,7 +19,7 @@ include("ChemistryNetwork.jl")
 using Healpix
 
 
-T = Float64
+const T = Float64
 const N = 3
 const GEO_FAC = T(4.0 / 3.0 * pi)
 const KERNELCONST = T(16.0/pi)
@@ -57,8 +57,17 @@ function read_snap(filename)
 
     Tdust::Vector{T}    = h5read(filename, "PartType0/DustTemperature");
 
+    N_star::Int64 = header["NumPart_ThisFile"][5]
+
+    pos_star::Matrix{T} = h5read(filename, "PartType4/Coordinates");
+    vel_star::Matrix{T} = h5read(filename, "PartType4/Velocities");
+    m_star::Vector{T}   = h5read(filename, "PartType4/Masses");
+    sftime::Vector{T}      = h5read(filename, "PartType4/StellarFormationTime");
+    id_star::Vector{Int64} = h5read(filename, "PartType4/ParticleIDs");
+
     return N_gas, pos_gas, vel_gas, rho, u, m_gas, hsml, id_gas,
         abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
+        N_star, pos_star, vel_star, m_star, sftime, id_star,
         boxsize, time
 end
 
@@ -89,6 +98,7 @@ const N=3
 #const boxsizes = SVector(1.0, 1.0, 1.0) .* (BOXSIZE)
 
 const ANGLE = 0.7
+const ShieldingLength = 0.1
 
 const XH = 0.71
 const BOLTZMANN=1.3806e-16
@@ -116,14 +126,16 @@ function solve_chem_all_particles()
     #snap = "013"
     file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
     snap = "1000"
-    filename = file_path * "/snap_" * snap * ".hdf5"
+    fname = file_path * "/snap_" * snap * ".hdf5"
     Npart, pos, vel, rho, u, mass, hsml, id_gas,
         abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
-        boxsize, time = read_snap(filename);
-    println("boxsize = ", boxsize)
-    boxsizes = SVector(1.0, 1.0, 1.0) .* (boxsize)
-    #boxsizes = SVector(1.0, 1.0, 10.0) .* (boxsize)
-    pos[3,:] .+= 0.5
+        N_star, pos_star, vel_star, m_star, sftime, id_star,
+        boxsize, time = read_snap(fname);
+    #println("boxsize = ", boxsize)
+
+    boxsizes = SVector(1.0, 1.0, 20.0)
+    center = SVector(0.5, 0.5, 0.0)
+    topnode_length = SVector(10., 10., 10.)
 
 
     #down-sampling
@@ -148,8 +160,14 @@ function solve_chem_all_particles()
     #X .*= BOXSIZE
     #push!(X,SVector(0.,0.,0.) .+ 0.01)
 
-    ξ = 1.3e-16 #H2
-    IUV = 1.0
+    dt = 3e-2   #30Myr
+    idx = @. ( time - sftime < dt )
+    SFR = 1e10 * sum(abs.(m_star[idx])) / (dt*1e9)
+    facSFR = SFR / 5e-3
+    @show facSFR, SFR
+
+    ξ = 1.3e-16 * facSFR #H2
+    IUV = 1.0 * facSFR
     Zp = 1.0
 
     #=
@@ -179,6 +197,8 @@ function solve_chem_all_particles()
         #use C+ & CO from simulations as the initial guess
         #abund_all[i][dict["CO"]] = abund[3,i]
         #abund_all[i][dict["C+"]] = abC_s * Zp - abund_all[i][dict["CO"]]
+        #make sure the abC is consistent between simulations & postprocessing
+        abund_all[i][dict["C+"]] = abC_s * Zp
         #initial guess for H2 & H+ (useful for calcultating steady state H2)
         abund_all[i][dict["H2"]] = abund[1,i]
         abund_all[i][dict["H+"]] = abund[2,i]
@@ -186,15 +206,15 @@ function solve_chem_all_particles()
     end
 
     #hsml = ones(Npart) .* (0.5 * boxsizes[1])
-    NH_med = zeros(Npart)
-    NH2_med = zeros(Npart)
-    NCO_med = zeros(Npart)
+    NH_eff = zeros(Npart)
+    NH2_eff = zeros(Npart)
+    NCO_eff = zeros(Npart)
     #ga_out = TreeGather{T}()
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
     tree_out = nothing
 
     #ITER = 1
-    Nstep = 5
+    Nstep = 4
     time_max = 1e9 #unit = yr
     dt = time_max / Nstep
     NCpix = zeros(NPIX)
@@ -205,7 +225,8 @@ function solve_chem_all_particles()
         #@show mass_H2[1], mass_CO[1]
         println("j = ", j)
         println("buildtree...")
-        @time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, boxsizes);
+        #@time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, boxsizes);
+        @time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, center, topnode_length);
         println("done!")
         #@time for i in 1:Npart
         println("loop over particles...")
@@ -215,16 +236,18 @@ function solve_chem_all_particles()
             if i%100 == 0 print("  i=", i) end
             #i%100 == 0 ? println("i = ", i) : nothing
             ga = TreeGather{T}()
-            treewalk(ga,X[i],tree,ANGLE,boxsizes)
+            treewalk(ga,X[i],tree,ANGLE,ShieldingLength,boxsizes)
             #column_all = (ga.column_all);
             ga_out[i] = ga
             NH = ga.column_all .* fac_col
             NH2 = ga.column_H2 .* fac_col
             NCO = ga.column_CO .* fac_col
             NC = 0.0
-            NH_med[i] = median(NH)
-            NH2_med[i] = median(NH2)
-            NCO_med[i] = median(NCO)
+            facNHtoAV = 5.35e-22
+            #NH_eff[i] = median(NH)
+            NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAV))) / facNHtoAV
+            NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAV))) / facNHtoAV
+            NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAV))) / facNHtoAV
             #if median(NH) > 0
             #    @show ga.column_all, ga.column_H2, ga.column_CO
             #end
@@ -244,38 +267,46 @@ function solve_chem_all_particles()
         println("done!")
         tree_out = tree
 
+
         # write to file
+        abund_all_arr = zeros(N_spec,Npart)
+        for i in eachindex(abund_all)
+            abund_all_arr[:,i] = abund_all[i]
+        end
+        #T = Float64
+        fname = file_path * "/chem3D-neqH2Hp-" * string(j) *".hdf5"
+        fid=h5open(fname,"w")
+        grp_head = g_create(fid,"Header");
+        attrs(fid["Header"])["all_species"] = all_species
+        attrs(fid["Header"])["time"] = time
+        attrs(fid["Header"])["facSFR"] = facSFR
+        grp_part = g_create(fid,"Chemistry");
+        h5write(fname, "Chemistry/Abundances"     , abund_all_arr)
+        h5write(fname, "Chemistry/ID"             , id_gas)
+        h5write(fname, "Chemistry/NH_eff"         , NH_eff)
+        h5write(fname, "Chemistry/NH2_eff"        , NH2_eff)
+        h5write(fname, "Chemistry/NCO_eff"        , NCO_eff)
+        close(fid)
+
         open(file_path * "/chem3D-neqH2Hp-" * string(j) *".out","w") do f
-            serialize(f, NH_med)
-            serialize(f, NH2_med)
-            serialize(f, NCO_med)
+            serialize(f, NH_eff)
+            serialize(f, NH2_eff)
+            serialize(f, NCO_eff)
             serialize(f, abund_all)
             #serialize(f, ga_out[Npart].column_all)
             serialize(f, rho)
             serialize(f, u)
             serialize(f, dict)
         end
+
     end
-    return abund_all, ga_out, X, NH_med, NH2_med, NCO_med, tree_out
+    return abund_all, ga_out, X, NH_eff, NH2_eff, NCO_eff, tree_out
 end
 
 abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles();
 0
 
 
-#=
-clf()
-r = [sqrt(sum((X[i].- 0.5*0.01).^2)) for i in 1:Npart]
-plot(r, NH, "o", ms=0.5, mfc="none", label="NH_tot", c="red")
-plot(r, @.( fac_col*median(getfield(ga,:column_all)) ), "o", ms=0.5, mfc="none", label="NH_tot", c="blue")
-gcf()
-=#
-
-#m = Map{Float64, RingOrder}(NSIDE);
-#m.pixels[:] = log10.(ga.column_all .+ 1e-2*minimum(ga.column_all[ga.column_all.!=0.0]));
-#m.pixels[:] = log10.(ga.column_all .* fac_col) ;
-#Plots.plot(m, clim=(20.5,24))
-#Plots.plot(m)
 
 #=
 ix,iy = 1,2
