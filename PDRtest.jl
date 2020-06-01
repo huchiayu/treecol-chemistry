@@ -206,7 +206,8 @@ ax[3].plot(xbin, getindex.(ab_vs_x, dict["CO"]) , "--" , label="CO")  #CO
 ax[3].plot(xbin, getindex.(ab_vs_x, dict["C+"]) , "-." , label="C+")  #C+
 ax[3].plot(xbin, getindex.(ab_vs_x, dict["CH"]) , ":" , label="CH")  #CH
 ax[3].plot(xbin, getindex.(ab_vs_x, dict["CH2"]) , ":" , label="CH2")  #CH
-ax[3].legend(loc="best", fontsize=9, ncol=2, frameon=false)
+ax[3].plot(xbin, getindex.(ab_vs_x, dict["HCO+"]) , ":" , label="HCO+")  #HCO+
+ax[3].legend(loc="upper left", fontsize=10, ncol=1, frameon=false)
 ax[3].set_xscale("log")
 ax[3].set_yscale("log")
 ax[3].axis([10.0^xminp, 10.0^xmaxp, 1e-11, 1e-3])
