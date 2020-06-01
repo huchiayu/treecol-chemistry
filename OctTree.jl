@@ -123,8 +123,9 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
     end
 end
 
-
+#PBC wrap: typically used as nearest.(dx) where dx is a separation vector connecting two points
 function nearest(x::T, boxsize::T) where {T}
+	#can be negative as this is just a vector component
     return (x > 0.5*boxsize) ? (x - boxsize) : ( (x < -0.5*boxsize) ? (x + boxsize) : x )
 end
 
@@ -169,7 +170,8 @@ end
 TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NPIX),zeros(NPIX),zeros(NPIX))
 
 #when changing the argument of treewalk, remember to also change the recursive treewalk call inside the function body!
-function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingangle::T, shieldinglength::T, boxsizes::SVector{N,T}) where {N,T}
+function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T},
+	openingangle::T, shieldinglength::T, boxsizes::SVector{N,T}) where {N,T}
     if isLeaf(node)
         #println("in a leaf node")
         if node.p != nothing
@@ -294,11 +296,12 @@ function get_scatter_ngb_tree(x::SVector{N,T}, node::Node{N,T}, boxsizes::SVecto
 end
 
 #build a tree for given particle locations X
-function buildtree(X::Vector{SVector{N,T}}, hsml::Vector{T},
-	mass::Vector{T}, mass_H2::Vector{T}, mass_CO::Vector{T}, boxsizes::SVector{N,T}) where {N,T}
+#we distinguish between topnode_length (for the tree) and boxsizes (for PBC wrap)
+function buildtree(X::Vector{SVector{N,T}}, hsml::Vector{T}, mass::Vector{T},
+	mass_H2::Vector{T}, mass_CO::Vector{T}, center::SVector{N,T}, topnode_length::SVector{N,T}) where {N,T}
 
     #construct the tree for ngb search
-	tree = Node{N,T}(0.5*boxsizes, boxsizes)
+	tree = Node{N,T}(center, topnode_length)
 
     @inbounds for i in eachindex(X)
 		part = PartData(SVector(X[i]), i, hsml[i], mass[i], mass_H2[i], mass_CO[i])
