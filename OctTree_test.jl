@@ -6,28 +6,28 @@ using OctTree
 using HDF5
 using StaticArrays
 using Statistics
-#using PyPlot
 using LinearAlgebra
 using .Threads
 #using Serialization
 using Random
+using BenchmarkTools
 
 import Plots #if needed, it has to be imported before PyPlot otherwise it'll crash
 using PyPlot
 
 
-const BOXSIZE_X = BOXSIZE_Y = BOXSIZE_Z = 1.0
+const BOXSIZE_X = 1.0
+const BOXSIZE_Y = 1.0
+const BOXSIZE_Z = 2.0
 
 const ANGLE = 0.7
 const ShieldingLength = 0.1
 
-N=3
-T=Float64
+const N=3
+const T=Float64
 
 
 function plot_quadtree(node::Node{N,T}, ix, iy) where {N,T}
-    #println("center=", node.center)
-    #println("length=", node.length)
     if N<2 println("N must be >= 2")
         return
     end
@@ -93,77 +93,120 @@ function plot_treewalk(ga::TreeGather{T},ix,iy) where {T}
     end
 end
 
+if N==3
+    const boxsizes = SVector{N,T}(BOXSIZE_X, BOXSIZE_Y, BOXSIZE_Z)
+elseif N==2
+    const boxsizes = SVector{N,T}(BOXSIZE_X, BOXSIZE_Y)
+elseif N==1
+    const boxsizes = SVector{N,T}(BOXSIZE_X)
+end
 
-
-
-function test(X::Vector{SVector{N,T}}) where {N,T}
-    if N==3
-        boxsizes = SVector{N,T}(BOXSIZE_X, BOXSIZE_Y, BOXSIZE_Z)
-    elseif N==2
-        boxsizes = SVector{N,T}(BOXSIZE_X, BOXSIZE_Y)
-    elseif N==1
-        boxsizes = SVector{N,T}(BOXSIZE_X)
-    end
-
+function treecol_test(X::Vector{SVector{N,T}}) where {N,T}
+    #boxsizes = SVector{N,T}(1.0,1.0,1.0) .* 2
     hsml0 = 0.1*BOXSIZE_X
     Npart = length(X)
     hsml = ones(T,Npart) .* hsml0
     hsml .*= (1.5 .- rand(Npart))
-    #mass = [1,0.1,0.3]
     mass = ones(Npart)
     mass_H2 = ones(Npart)
     mass_CO = ones(Npart)
     @time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, boxsizes);
-    #idx_ngbs = get_scatter_ngb_tree(p, tree, boxsizes)
-    #idx_ngbs = get_gather_ngb_tree(p, hsml0, tree, boxsizes)
-    #@show length(idx_ngbs)
+
 
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
+
     @time for i in 1:Npart
         ga = TreeGather{T}()
         treewalk(ga, X[i], tree, ANGLE, ShieldingLength, boxsizes)
-        #treewalk(ga,X[i], tree, ANGLE, boxsizes)
-        #column_all = (ga.column_all);
         ga_out[i] = ga
     end
 
-    #ix=1
-    #iy=2
-    #xngb = getindex.(X[idx_ngbs], ix)
-    #yngb = getindex.(X[idx_ngbs], iy)
 
-    #fig = figure("tree",figsize=(8,8))
-    #plot_quadtree(tree, ix, iy)  #costly!!!
-    #scatter(getindex.(X,ix), getindex.(X,iy), c="blue", marker="o", s=3)
-    #scatter( xngb, yngb , marker="o", color="red", s=10)
-    #@show xngb, yngb
-
-    #mycircle(hsml0, p[ix], p[iy], 0.5*boxsizes[ix], 0.5*boxsizes[iy], boxsizes[ix], boxsizes[iy], "red")
-    #plot_circles_scatter_ngbs(X[idx_ngbs], hsml[idx_ngbs], boxsizes)
-    #title("neighbor finder with quadtree")
-    #xlabel("x")
-    #ylabel("y")
     return tree, ga_out
 end
 
-#p = SVector(0.0, 0.0, 0.0) .+ 0.5
-#radius = 0.2
-#tree,x = test(radius, p, 100);
-
-using Healpix
-
-X = [@SVector rand(N) for _ in 1:10000]
-#push!(X,SVector(0.5,0.5,0.5).*BOXSIZE_X) #add a particle at the box center
-
-tree, ga_out = test(X);
-
-println("c.o.m. of the top node = ", sum(X)/length(X))
-
 #=
+using Healpix
+X = [@SVector rand(N) for _ in 1:100000]
+push!(X,SVector(0.5,0.5,0.5).*BOXSIZE_X) #add a particle at the box center
+tree, ga_out = treecol_test(X);
+
 const fac_col = 8.8674721e23
 m = Map{Float64, RingOrder}(NSIDE);
-#m.pixels[:] = log10.(ga_out[end].column_all .+ 1e-2*minimum(ga.column_all[ga.column_all.!=0.0]));
 m.pixels[:] = log10.(ga_out[end].column_all .* fac_col) ;
 #Plots.plot(m, clim=(20.5,24))
 Plots.plot(m)
 =#
+
+function ngb_test(p, hsml0)
+    #boxsizes = SVector{N,T}(1.0,1.0,1.0)
+    #idx_ngbs = get_scatter_ngb_tree(p, tree, boxsizes)
+    idx_ngbs = get_gather_ngb_tree(p, hsml0, tree, boxsizes)
+    @show length(idx_ngbs)
+    ix,iy=1,2
+    xngb = getindex.(X[idx_ngbs], ix)
+    yngb = getindex.(X[idx_ngbs], iy)
+    fig = figure("tree",figsize=(8,8))
+    #plot_quadtree(tree, ix, iy)  #costly!!!
+    scatter(getindex.(X,ix), getindex.(X,iy), c="blue", marker="o", s=3)
+    scatter( xngb, yngb , marker="o", color="red", s=10)
+    #@show xngb, yngb
+    mycircle(hsml0, p[ix], p[iy], 0.5*boxsizes[ix], 0.5*boxsizes[iy], boxsizes[ix], boxsizes[iy], "red")
+    #plot_circles_scatter_ngbs(X[idx_ngbs], hsml[idx_ngbs], boxsizes)
+    title("neighbor finder with quadtree")
+    xlabel("x")
+    ylabel("y")
+end
+#p=SVector{N,T}(0.,0.5,0.5)
+#ngb_test(p,hsml0)
+
+function loop_all_particles_ngbs(X::Vector{SVector{N,T}}, hsml0::T) where {N,T}
+
+    Npart = length(X)
+    hsml = ones(T,Npart) .* hsml0
+    #hsml .*= (1.5 .- rand(Npart))
+    mass = ones(Npart)
+    mass_H2 = ones(Npart)
+    mass_CO = ones(Npart)
+    #tree = buildtree(X, hsml, mass, mass_H2, mass_CO, boxsizes);
+    topnode_length = SVector{3}(4.,4.,4.)
+    center = topnode_length .* 0.5
+    tree = buildtree(X, hsml, mass, mass_H2, mass_CO, center, topnode_length);
+
+    Nngbs = zeros(Int64,length(X))
+    for i in eachindex(X)
+    #for i in 1:1
+        idx_ngbs = get_gather_ngb_tree(X[i], hsml0, tree, boxsizes)
+        #idx_ngbs = get_scatter_ngb_tree(X[i], tree, boxsizes)
+        Nngbs[i] = length(idx_ngbs)
+    end
+    Nngbs,tree
+end
+
+X = [@SVector rand(N) for _ in 1:100000]
+hsml0 = 0.04
+
+@time Nngbs,tree = loop_all_particles_ngbs(X,hsml0)
+#@btime Nngbs = loop_all_particles_ngbs($X,$hsml0)
+
+
+using NearestNeighbors
+function loop_all_particles_ngbs_kdtree(X, hsml0)
+    data = zeros(N,length(X))
+    for i in eachindex(X) data[:,i] = X[i] end
+    kdtree = KDTree(data)
+    Nngbs = zeros(Int64,length(X))
+    for i in eachindex(X)
+        idx_ngbs = inrange(kdtree, data[:,i], hsml0, false)
+        Nngbs[i] = length(idx_ngbs)
+    end
+    Nngbs
+end
+
+@time NngbsKD = loop_all_particles_ngbs_kdtree(X,hsml0)
+#@btime NngbsKD = loop_all_particles_ngbs_kdtree($X,$hsml0)
+
+@show sum(Nngbs .!= NngbsKD)
+
+#println("c.o.m. of the top node = ", sum(X)/length(X) .== tree.n.pos_c)
+#@show sum(X)/length(X) .≈ tree.n.pos_c
