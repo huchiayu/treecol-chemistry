@@ -3,7 +3,6 @@ using StaticArrays
 using Healpix
 const NSIDE = 1
 const NPIX = 12*NSIDE^2
-#const NPIX = 1
 
 
 export Node, TreeGather
@@ -27,6 +26,7 @@ mutable struct NodeData{N,T} #auxiliary data carried by treenodes
 	mass::T
 	mass_H2::T
 	mass_CO::T
+	#idxs::Vector{Int64}
 end
 
 NodeData{N,T}() where {N,T} = NodeData{N,T}(zero(SVector{N,T}),0,0,0,0)
@@ -57,17 +57,24 @@ function getChildIndex(pos::SVector{N,T}, node::Node{N,T}) where {N,T}
     return idx+1
 end
 
-function getoffset(i,N)
-#for i in 1:2^N
-    a = bitstring(i-1)
-    #offset = SVector(2*parse(Int, a[end])-1, 2*parse(Int, a[end-1])-1, 2*parse(Int, a[end-2])-1)
-    offset = Int64[]
-    @inbounds for j in 1:N
-        push!(offset,2*parse(Int64, a[end-(j-1)])-1)
-    end
-    #println(offset)
-    return offset
+function getoffset(N::T) where {T}
+	offset_child = zeros(T,N,2^N)
+	for i in 1:2^N
+	    a = bitstring(i-1)
+	    #offset = SVector(2*parse(Int, a[end])-1, 2*parse(Int, a[end-1])-1, 2*parse(Int, a[end-2])-1)
+	    offset = T[]
+	    @inbounds for j in 1:N
+	        push!(offset,2*parse(T, a[end-(j-1)])-1)
+	    end
+	    #println(offset)
+		offset_child[:,i] = offset
+	end
+	SMatrix{N,2^N,T}(offset_child)
 end
+
+const offset = getoffset(3) #precomputed offset array
+
+
 
 function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
     if isLeaf(node)
@@ -75,20 +82,13 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
             #println("at an empty leaf, insert particle and we're done")
 			@assert node.n == nothing
 			node.p = p
-			#=
-			node.n.pos_c = p.pos
-			node.n.max_hsml = p.hsml
-			node.n.mass = p.mass
-			node.n.mass_H2 = p.mass_H2
-			node.n.mass_CO = p.mass_CO
-			=#
         else
             #println("at a leaf with a preexisting particle, so we split it")
 			#initializing the child nodes and calculate their centers
             node.child = Array{Node{N,T},1}(undef,2^N)
             @inbounds for i in 1:2^N
                 #println(getoffset(i,N))
-                childcenter = node.center + getoffset(i,N) * 0.25 .* node.length
+                childcenter = node.center + offset[:,i] * 0.25 .* node.length
                 #println("childcenter=", childcenter, "  getoffset(i,N)=", getoffset(i,N))
 				node.child[i] = Node{N,T}(childcenter, 0.5 .* node.length)
                 #println("center = ", childcenter, "  edge_min = ", childcenter - 0.25*node.length,
@@ -98,6 +98,7 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
 			insertpart!(node.p, node.child[getChildIndex(node.p.pos, node)])
 			#since it's not a leaf node anymore, initialize node data
 			node.n = NodeData{N,T}()
+			#push!(node.n.idxs, node.p.idx, p.idx)
 			masssum = node.p.mass + p.mass
 			inv_masssum = 1.0 / masssum
 			node.n.pos_c = (node.p.mass .* node.p.pos .+ p.mass .* p.pos) .* inv_masssum
@@ -110,6 +111,7 @@ function insertpart!(p::PartData{N,T}, node::Node{N,T}) where {N,T}
         end
     else
         #println("open node")
+		#push!(node.n.idxs, p.idx)
 		masssum = node.n.mass + p.mass
 		inv_masssum = 1.0 / masssum
 		node.n.pos_c = (node.n.mass .* node.n.pos_c .+ p.mass .* p.pos) .* inv_masssum
@@ -146,15 +148,6 @@ function get_distance2(a::SVector{N,T}, b::SVector{N,T}, boxsizes::SVector{N,T},
         c = nearest.(c, boxsizes)
     end
     return sum(c .^ 2)
-    #===
-    for i in 1:N
-        c = a[i] - b[i]
-        if periodic
-            c = nearest(c, 0.5*boxsize[i])
-        end
-        sum += c^2
-    end
-    ===#
 end
 
 res = Healpix.Resolution(NSIDE)
@@ -179,9 +172,7 @@ TreeGather{T}() where {T} = TreeGather{T}(0,zeros(NPIX),zeros(NPIX),zeros(NPIX))
 function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingangle::T, shieldinglength::T, boxsizes::SVector{N,T}) where {N,T}
     if isLeaf(node)
         #println("in a leaf node")
-        if node.p == nothing
-            #println("empty leaf")
-        else
+        if node.p != nothing
             #println("nonempty leaf")
             ga.mass += node.p.mass
             dx = nearest.(node.p.pos - p, boxsizes)
@@ -201,43 +192,32 @@ function treewalk(ga::TreeGather{T}, p::SVector{N,T}, node::Node{N,T}, openingan
             #dist2 = get_distance2(node.part, p, boxsizes, true)
         end
     else
-        #println("This is a node... check its children")
-        @inbounds for i in 1:2^N
-			if isLeaf(node.child[i])
-				if node.child[i].p == nothing continue end
-				pos_c = node.child[i].p.pos
-				mass = node.child[i].p.mass
-				mass_H2 = node.child[i].p.mass_H2
-				mass_CO = node.child[i].p.mass_CO
-			else
-				pos_c = node.child[i].n.pos_c
-				mass = node.child[i].n.mass
-				mass_H2 = node.child[i].n.mass_H2
-				mass_CO = node.child[i].n.mass_CO
+        #println("This is a node... check the opening angle")
+		#dist2 = get_distance2(pos_c, p, boxsizes, true)
+		#don't use get_distance2 as we need both dist2 and dx (for vec2pix)
+		dx = nearest.(node.n.pos_c - p, boxsizes)
+		dist2 = sum(dx.^2)
+		if dist2 > (node.length[1] / openingangle)^2
+			#println("skip node ", i)
+			if dist2 < shieldinglength^2
+				ga.mass += node.n.mass
+				#dx = nearest.(node.n.pos_c - p, boxsizes)
+				ipix = vec2pix(dx)
+				#ga.column_all[ipix] += node.mass
+				area = 4*pi/NPIX * dist2
+				ga.column_all[ipix] += node.n.mass / area
+				ga.column_H2[ipix] += node.n.mass_H2 / area
+				ga.column_CO[ipix] += node.n.mass_CO / area
+				#push!(ga.nodecenters, node.center)
+				#push!(ga.nodelengths, node.length)
 			end
-            dist2 = get_distance2(pos_c, p, boxsizes, true)
-            if dist2 > (node.child[i].length[1] / openingangle)^2
-                #println("skip node ", i)
-				if dist2 < shieldinglength^2
-	                ga.mass += mass
-	                dx = nearest.(pos_c - p, boxsizes)
-	                ipix = vec2pix(dx)
-	                #ga.column_all[ipix] += node.child[i].mass
-	                area = 4*pi/NPIX * dist2
-	                ga.column_all[ipix] += mass / area
-					ga.column_H2[ipix] += mass_H2 / area
-					ga.column_CO[ipix] += mass_CO / area
-	                #push!(ga.nodecenters, node.child[i].center)
-	                #push!(ga.nodelengths, node.child[i].length)
-				end
-                #@show "use this node!" node.child[i].center, node.child[i].length
-                @goto escape_label
-            end
-            #println("open this node")
-            #@show "!!!", m
-            treewalk(ga, p, node.child[i], openingangle, shieldinglength, boxsizes)
-            @label escape_label
-        end
+			#@show "use this node!" node.center, node.length
+		else
+	        @inbounds for i in 1:2^N
+	            #println("open this node")
+	            treewalk(ga, p, node.child[i], openingangle, shieldinglength, boxsizes)
+	        end
+		end
     end
 end
 
@@ -245,8 +225,6 @@ end
 function get_ptl_in_box_gather(radius::T, p::SVector{N,T}, node::Node{N,T}, boxsizes::SVector{N,T}, idx_ngbs::Vector{Int64}) where {N,T}
     if isLeaf(node)
         #println("in a leaf node")
-        #if node.p == nothing
-            #println("empty leaf")
         if node.p != nothing
             #println("nonempty leaf")
 	    	dist2 = get_distance2(node.p.pos, p, boxsizes, true)
@@ -256,18 +234,21 @@ function get_ptl_in_box_gather(radius::T, p::SVector{N,T}, node::Node{N,T}, boxs
             end
         end
     else
-        #println("This is a node... check its children")
+        #println("This is a node... check if node and radius overlap")
+		@inbounds for j in 1:N
+			if abs(nearest(node.center[j] - p[j], boxsizes[j])) > 0.5*node.length[j] + radius
+				return  #no overlap, so node can be skipped!
+			end
+		end
+		#=
+		if get_distance2(node.center, p, boxsizes, true) + 0.75 * node.length[1]^2 < radius^2
+			append!(idx_ngbs, node.n.idxs)
+			return
+		end
+		=#
+		#println("node and radius overlap, so we need to open the node and check its children")
         @inbounds for i in 1:2^N
-            #dist2 = get_distance2(node.child[i].center, p, boxsizes, true)
-            @inbounds for j in 1:N
-                if abs(nearest(node.child[i].center[j] - p[j], boxsizes[j])) > 0.5*node.child[i].length[j] + radius
-                    #println("skip node ", i)
-                    @goto escape_label
-                end
-            end
-            #println("open this node")
-            get_ptl_in_box_gather(radius, p, node.child[i], boxsizes, idx_ngbs)
-            @label escape_label
+			get_ptl_in_box_gather(radius, p, node.child[i], boxsizes, idx_ngbs)
         end
     end
 end
@@ -276,29 +257,24 @@ end
 function get_ptl_in_box_scatter(p::SVector{N,T}, node::Node{N,T}, boxsizes::SVector{N,T}, idx_ngbs::Vector{Int64}) where {N,T}
     if isLeaf(node)
         #println("in a leaf node")
-        #if node.p == nothing
-            #println("empty leaf")
 		if node.p != nothing
             #println("nonempty leaf")
 	    	dist2 = get_distance2(node.p.pos, p, boxsizes, true)
-            if dist2 < node.n.max_hsml^2
+            if dist2 < node.p.hsml^2
                 #println("push ", node.part)
 				push!(idx_ngbs, node.p.idx)
             end
         end
     else
-        #println("This is a node... check its children")
+		#println("This is a node... check if node and radius overlap")
+		@inbounds for j in 1:N
+			if abs(nearest(node.center[j] - p[j], boxsizes[j])) > 0.5*node.length[j] + node.n.max_hsml
+				return  #no overlap, so node can be skipped!
+			end
+		end
+		#println("node and radius overlap, so we need to open the node and check its children")
         @inbounds for i in 1:2^N
-            #dist2 = get_distance2(node.child[i].center, p, boxsizes, true)
-            @inbounds for j in 1:N
-                if abs(nearest(node.child[i].center[j] - p[j], boxsizes[j])) > 0.5*node.child[i].length[j] + node.child[i].n.max_hsml
-                    #println("skip node ", i)
-                    @goto escape_label
-                end
-            end
-            #println("open this node")
-            get_ptl_in_box_scatter(p, node.child[i], boxsizes, idx_ngbs)
-            @label escape_label
+			get_ptl_in_box_scatter(p, node.child[i], boxsizes, idx_ngbs)
         end
     end
 end
