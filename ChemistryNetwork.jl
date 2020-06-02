@@ -256,7 +256,7 @@ end
 function calc_coeff!(coeff, par::Par, xelec)
     @unpack nH, temp, NH, NH2, NCO, NC, ξ, IUV, Zp = par
 
-    Av = NH .* 5.35e-22
+    Av = NH .* (5.35e-22 * Zp)
     ξp = ξ / ξ0;
     for i in 1:N_reac
         if typ[i] == 1
@@ -341,8 +341,8 @@ function calc_coeff!(coeff, par::Par, xelec)
 end
 
 function init_abund(abund, Zp, xneq)
-    #abund[dict["C+"]] = 1.0
-    abund[dict["O"]] = 1.0
+    #abund[dict["C+"]] = abC_s * Zp
+    #abund[dict["O"]]  = abO_s * Zp
     calc_abund_derived(abund, Zp, xneq)
 end
 
@@ -464,7 +464,7 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     prob = ODEProblem(calc_abund_dot_closure, abund_con, tspan)
     sol = solve(prob,
         alg_hints=[:stiff],
-        reltol=1e-9, abstol=1e-9,
+        reltol=1e-7, abstol=1e-7,
         isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
         #isoutofdomain=(y,p,t)->speciesoutofbound(abund,Zp),
         save_everystep=false);

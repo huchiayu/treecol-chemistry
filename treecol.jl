@@ -121,11 +121,14 @@ function solve_chem_all_particles()
     #push!(X,SVector(0.,0.,0.))
     #push!(X,SVector(0.5,0.5,0.5))
 
-    #file_path = "./"
-    #file_path = "../../../simulations/isocloud_N1e4/"
-    #snap = "013"
-    file_path = "../../../simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p1_stoIMFfix"
-    snap = "1000"
+    #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh200"
+    #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p5_stoIMFfix_rngSF_convSF"
+    #snap = "550"
+    file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Z0p1"
+    snap = "415"
+
+    Zp = 0.1
+
     fname = file_path * "/snap_" * snap * ".hdf5"
     Npart, pos, vel, rho, u, mass, hsml, id_gas,
         abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
@@ -168,7 +171,6 @@ function solve_chem_all_particles()
 
     ξ = 1.3e-16 * facSFR #H2
     IUV = 1.0 * facSFR
-    Zp = 1.0
 
     #=
     rho = nH * PROTONMASS / XH  / UnitDensity_in_cgs #code units
@@ -243,11 +245,11 @@ function solve_chem_all_particles()
             NH2 = ga.column_H2 .* fac_col
             NCO = ga.column_CO .* fac_col
             NC = 0.0
-            facNHtoAV = 5.35e-22
+            facNHtoAv = 5.35e-22
             #NH_eff[i] = median(NH)
-            NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAV))) / facNHtoAV
-            NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAV))) / facNHtoAV
-            NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAV))) / facNHtoAV
+            NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAv))) / facNHtoAv
+            NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
+            NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
             #if median(NH) > 0
             #    @show ga.column_all, ga.column_H2, ga.column_CO
             #end
@@ -274,7 +276,7 @@ function solve_chem_all_particles()
             abund_all_arr[:,i] = abund_all[i]
         end
         #T = Float64
-        fname = file_path * "/chem3D-neqH2Hp-" * string(j) *".hdf5"
+        fname = file_path * "/chem3D-neqH2Hp-" * snap * "-" * string(j) *".hdf5"
         fid=h5open(fname,"w")
         grp_head = g_create(fid,"Header");
         attrs(fid["Header"])["all_species"] = all_species
