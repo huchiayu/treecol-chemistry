@@ -1,14 +1,17 @@
 .ipynb_checkpoints/
 
+### Job-submitting script ###
+jlrun.sh
 
-# Backup #
-##########
+### Backup ###
 *.bak
 *~
 *#
 
-# Figures #
-###########
+### Figures ###
 *.png
+
+### Log files ###
+log.*
 
 .DS_Store
