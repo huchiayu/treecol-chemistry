@@ -10,3 +10,5 @@
 # Figures #
 ###########
 *.png
+
+.DS_Store
