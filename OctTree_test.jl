@@ -12,13 +12,13 @@ using .Threads
 using Random
 using BenchmarkTools
 
-import Plots #if needed, it has to be imported before PyPlot otherwise it'll crash
+#import Plots #if needed, it has to be imported before PyPlot otherwise it'll crash
 using PyPlot
 
 
 const BOXSIZE_X = 1.0
 const BOXSIZE_Y = 1.0
-const BOXSIZE_Z = 2.0
+const BOXSIZE_Z = 1.0
 
 const ANGLE = 0.7
 const ShieldingLength = 0.1
@@ -184,8 +184,10 @@ function loop_all_particles_ngbs(X::Vector{SVector{N,T}}, hsml0::T) where {N,T}
 end
 
 X = [@SVector rand(N) for _ in 1:100000]
-hsml0 = 0.04
-
+#hsml0 = 0.04
+fac_geo = 4*pi/3
+Nngb0 = 32
+hsml0 = BOXSIZE_X * (Nngb0/(fac_geo*length(X)))^(1/N)
 @time Nngbs,tree = loop_all_particles_ngbs(X,hsml0)
 #@btime Nngbs = loop_all_particles_ngbs($X,$hsml0)
 
@@ -194,7 +196,7 @@ using NearestNeighbors
 function loop_all_particles_ngbs_kdtree(X, hsml0)
     data = zeros(N,length(X))
     for i in eachindex(X) data[:,i] = X[i] end
-    kdtree = KDTree(data)
+    kdtree = BallTree(data,PeriodicEuclidean(SVector(1.0, 1.0, 1.0)))
     Nngbs = zeros(Int64,length(X))
     for i in eachindex(X)
         idx_ngbs = inrange(kdtree, data[:,i], hsml0, false)

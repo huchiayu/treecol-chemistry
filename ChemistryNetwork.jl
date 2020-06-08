@@ -402,6 +402,10 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     reac_rates = zeros(N_reac)
 
     @unpack nH, Zp, xneq = par
+
+    max_abund_inv = zeros(N_spec)
+    get_max_abundance!(max_abund_inv, Zp)
+
     #we use closure s.t. large arrays like coeff & reac_rates can be updated in-place
     function calc_abund_dot_closure(abund_dot_int, abund_int, ppp, t)
 
@@ -456,7 +460,7 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         end #zero allocation
         abund_dot_int .= abund_dot[idx_integrate]
     end
-
+    rtol, atol = 1e-4, 1e-7
     #tend = SEC_PER_YEAR * 1e10 / Zp / nH
     tend = SEC_PER_YEAR * dtime
     tspan = (0.0, tend)
@@ -464,8 +468,10 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
     prob = ODEProblem(calc_abund_dot_closure, abund_con, tspan)
     sol = solve(prob,
         alg_hints=[:stiff],
-        reltol=1e-7, abstol=1e-7,
-        isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
+        reltol=rtol, abstol=atol,
+        #isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
+        #isoutofdomain=(y,p,t)->any(x->(x<-1e-50||x>1.0+1e-50),y),
+        isoutofdomain=(y,p,t)->any(x->(x<0.0-rtol||x>1.0+rtol),abund.*max_abund_inv),
         #isoutofdomain=(y,p,t)->speciesoutofbound(abund,Zp),
         save_everystep=false);
     abund_final[idx_integrate] .= sol.u[end]
@@ -477,10 +483,24 @@ end
 
 
 #end
-
+function get_max_abundance!(max_abund_inv, Zp)
+    #update in-place
+    for i in 1:N_spec
+        val = 0
+        val = max(fac_H[i], fac_He[i]/XHe)
+        val = abC_s  > 0 ? max(fac_C[i] /(abC_s*Zp ), val) : val
+        val = abO_s  > 0 ? max(fac_O[i] /(abO_s*Zp ), val) : val
+        val = abS_s  > 0 ? max(fac_S[i] /(abS_s*Zp ), val) : val
+        val = abSi_s > 0 ? max(fac_Si[i]/(abSi_s*Zp), val) : val
+        val = abN_s  > 0 ? max(fac_N[i] /(abN_s*Zp ), val) : val
+        val = abMg_s > 0 ? max(fac_Mg[i]/(abMg_s*Zp), val) : val
+        val = abFe_s > 0 ? max(fac_Fe[i]/(abFe_s*Zp), val) : val
+        max_abund_inv[i] = val
+    end
+end
 #=
 function speciesoutofbound(abund,Zp)
-    tol=1e-2
+    tol=1e-6
     for i in 1:N_spec
         if iH > 0 && fac_H[i] > 0
             if abs(abund[i] * fac_H[i] - 0.5) > 0.5 + tol

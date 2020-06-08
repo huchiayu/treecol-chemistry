@@ -55,11 +55,12 @@ const xmin = 16.
 const xmax = 23.
 
 function runPDR()
-    nH = 100.
-    temp = 50.0 #check!
-    ξ = 1.3e-17 #H2
+    nH = 1000.
+    temp = 30.0 #check!
+    ξ = 1e-16 #H2
+    #ξ = 1.3e-17 #H2
     IUV = 1.0
-    Zp = 1.0
+    Zp = 0.3
     dtime = 1e10
 
     ab_vs_x = Vector{Vector{Float64}}(undef, Nbin)
@@ -222,7 +223,7 @@ ax2.set_xscale("log")
 ax2.set_yscale("log")
 
 tight_layout()
-savefig("PDR.png")
+#savefig("PDR.png")
 
 
 
