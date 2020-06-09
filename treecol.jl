@@ -70,7 +70,7 @@ function solve_chem_all_particles(i)
     #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh200"
     #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p5_stoIMFfix_rngSF_convSF"
     #snap = "550"
-    file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh100"
+    file_path = "/Users/chu/simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh100"
     #snap = "860"
     #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Z0p1"
     #snap = "415"
@@ -120,8 +120,9 @@ function solve_chem_all_particles(i)
     ξ = 1.3e-16 * facSFR #H2
     IUV = 1.0 * facSFR
 
+    mu = 2.3 #mean molecular weight
     nH = rho .* (XH * UnitDensity_in_cgs / PROTONMASS)
-    temp = u ./ (1.5 * BOLTZMANN /PROTONMASS / 1e10)
+    temp = u ./ (1.5 * BOLTZMANN /mu /PROTONMASS / 1e10)
 
     mass_H2 = zeros(Npart)
     mass_CO = zeros(Npart)
@@ -154,7 +155,6 @@ function solve_chem_all_particles(i)
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
     tree_out = nothing
 
-    #ITER = 1
     Nstep = 2
     time_max = 1e9 #unit = yr
     dt = time_max / Nstep
@@ -170,8 +170,7 @@ function solve_chem_all_particles(i)
         @time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, center, topnode_length);
 
         println("loop over particles and solve the chemistry network...")
-        #@time for i in 953:953
-        #@time for i in 57647:57647
+        #@time for i in 273432:273432
         @time @threads for i in findall((nH.>1).&(temp.<3e3)) #better load balance
             if i%1000 == 0
                 print("i=", i, " ")
@@ -185,21 +184,22 @@ function solve_chem_all_particles(i)
             NC = 0.0
             NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAv))) / facNHtoAv
             NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
-            NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv            
+            NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
 
             xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
-
+            #@show nH[i], temp[i], ξ, IUV, Zp, NH_eff[i], NH2_eff[i], NCO_eff[i]
+            temp[i] = temp[i] < 1 ? 1 : temp[i]
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
                 SVector{NPIX,T}(NH),
                 SVector{NPIX,T}(NH2),
                 SVector{NPIX,T}(NCO),
                 SVector{NPIX,T}(NCpix), xneq)
-            #println(par)
             #@show NH,NH2,NCO,NCpix,xneq
             #dt = 1e9 / (Zp * nH[i]) #in years
             solve_equilibrium_abundances(abund_all[i], dt, par)
         end
-        
+
+
         #this may seem redundant as it'll be computed in the next iteration
         #however, treewalk is so fast (compared to chemistry) that it doesn't hurt
         #and we get the updated column densities for little overhead
@@ -210,7 +210,7 @@ function solve_chem_all_particles(i)
         #@time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, boxsizes);
         @time tree = buildtree(X, hsml, mass, mass_H2, mass_CO, center, topnode_length);
         println("loop over particles and get column densities...")
-        @time @threads for i in eachindex(NH_eff) 
+        @time @threads for i in eachindex(NH_eff)
             ga = TreeGather{T}()
             treewalk(ga,X[i],tree,ANGLE,ShieldingLength,boxsizes)
             ga_out[i] = ga
@@ -221,6 +221,7 @@ function solve_chem_all_particles(i)
             NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
             NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
         end
+
         println("done!")
         tree_out = tree
 
@@ -231,6 +232,7 @@ function solve_chem_all_particles(i)
             abund_all_arr[:,i] = abund_all[i]
         end
         #T = Float64
+
         fnamebase = "/chem-neqH2Hp-noCOic-treewalk-"
         fname = file_path * fnamebase * snap * "-" * string(j) *".hdf5"
         fid=h5open(fname,"w")
@@ -245,14 +247,19 @@ function solve_chem_all_particles(i)
         h5write(fname, "Chemistry/NH2_eff"        , NH2_eff)
         h5write(fname, "Chemistry/NCO_eff"        , NCO_eff)
         close(fid)
+
     end #iteration loop
     return abund_all, ga_out, X, NH_eff, NH2_eff, NCO_eff, tree_out
 end
 
+i = 640
+abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles(i);
+#=
 snaps = collect(640:-10:150)
 for i in snaps
     abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles(i);
 end
+=#
 0
 
 

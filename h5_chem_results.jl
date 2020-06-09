@@ -49,7 +49,8 @@ temp = u ./ (1.5 * BOLTZMANN /PROTONMASS / 1e10)
 
 # load from file
 if noneq=="neq"
-    fname = file_path * "/chem3D-neqH2Hp-" * num * "-3.hdf5"
+    fname = file_path * "/chem-neqH2Hp-noCOic-treewalk-" * num * "-4.hdf5"
+    #fname = file_path * "/chem-neqH2Hp-" * num * "-4.hdf5"
 elseif noneq=="eq"
     fname = file_path * "/chem3D-eqH2Hp-" * num * "-3.hdf5"
 end
@@ -106,10 +107,10 @@ end
 clf()
 FS=17
 #fig, ax = PyPlot.subplots(1, 2, figsize=(8.5,4))
-fig, axes = PyPlot.subplots(2, 2, figsize=(10,8))
+fig, axes = PyPlot.subplots(2, 3, figsize=(12,8))
 Nbin = 30
 al = 0.3
-nmin, nmax = 1, 5.5
+nmin, nmax = 1, 4
 ax = axes[1,1]
 plot_xy_binned(log10.(nH), log10.(xH), Nbin, nmin, nmax, "blue", "-", ax, al, L"{\rm H}")
 plot_xy_binned(log10.(nH), log10.(2 .*xH2), Nbin, nmin, nmax, "red", "-", ax, al, L"{\rm H_2(2x)}")
@@ -127,6 +128,7 @@ ax = axes[2,1]
 plot_xy_binned(log10.(nH), log10.(xCp), Nbin, nmin, nmax, "blue" , "-", ax, al, L"{\rm C^+}")
 plot_xy_binned(log10.(nH), log10.(xC) , Nbin, nmin, nmax, "green", "-", ax, al, L"{\rm C}")
 plot_xy_binned(log10.(nH), log10.(xCO), Nbin, nmin, nmax, "red"  , "-", ax, al, L"{\rm CO}")
+plot_xy_binned(log10.(nH), log10.(abund[3,:]), Nbin, nmin, nmax, "red"  , "--", ax, al, L"{\rm CO}")
 ax.set_xlim(1, nmax)
 ax.set_ylim(ymin,ymax)
 ax.set_xlabel(L"log_{10} n_H\ [{\rm cm^{-3}}]", fontsize=FS+2)
@@ -135,7 +137,7 @@ ax.legend(loc="upper left", frameon=false, fontsize=FS)
 ax.tick_params(labelsize=FS, axis="both")
 ax.grid(true, ls=":")
 
-Nmin,Nmax=20.8,23.
+Nmin,Nmax=20.8,22.
 ax = axes[1,2]
 plot_xy_binned(log10.(NH_eff), log10.(xH), Nbin, Nmin, Nmax, "blue", "-", ax, al, L"{\rm H}")
 plot_xy_binned(log10.(NH_eff), log10.(2 .*xH2), Nbin, Nmin, Nmax, "red", "-", ax, al, L"{\rm H_2(2x)}")
@@ -158,8 +160,37 @@ ax.set_ylabel(L"log_{10} x_i", fontsize=FS+4)
 ax.legend(loc="upper left", frameon=false, fontsize=FS)
 ax.tick_params(labelsize=FS, axis="both")
 ax.grid(true, ls=":")
-fig.tight_layout()
+
+NH_sim = [-log(mean(exp.(-col_tot[:,i].*facNHtoAv.*fac_col))) / facNHtoAv for i in 1:Npart]
+NH2_sim = [-log(mean(exp.(-col_H2[:,i].*facNHtoAv.*fac_col))) / facNHtoAv for i in 1:Npart]
+NCO_sim = [-log(mean(exp.(-col_CO[:,i].*facNHtoAv.*fac_col))) / facNHtoAv for i in 1:Npart]
+
+ax = axes[1,3]
+plot_xy_binned(log10.(nH), log10.(NH_sim) , Nbin, nmin, nmax, "blue" , "-", ax, al, L"{\rm NH_{sim}}")
+plot_xy_binned(log10.(nH), log10.(NH_eff) , Nbin, nmin, nmax, "red"  , "-", ax, al, L"{\rm NH_{eff}}")
+plot_xy_binned(log10.(nH), log10.(NH2_sim), Nbin, nmin, nmax, "blue" , ":", ax, al, L"{\rm NH2_{sim}}")
+plot_xy_binned(log10.(nH), log10.(NH2_eff), Nbin, nmin, nmax, "red"  , ":", ax, al, L"{\rm NH2_{eff}}")
+ax.set_xlim(nmin,nmax)
+ax.set_ylim(18,22)
+ax.set_ylabel(L"log_{10} N_H\ [{\rm cm^{-2}}]", fontsize=FS+2)
+#ax.set_ylabel(L"log_{10} x_i", fontsize=FS+4)
+ax.legend(loc="best", frameon=false, fontsize=FS)
+ax.tick_params(labelsize=FS, axis="both")
+ax.grid(true, ls=":")
+
+ax = axes[2,3]
+plot_xy_binned(log10.(nH), log10.(NCO_sim), Nbin, nmin, nmax, "blue" , "--", ax, al, L"{\rm NCO_{sim}}")
+plot_xy_binned(log10.(nH), log10.(NCO_eff), Nbin, nmin, nmax, "red"  , "--", ax, al, L"{\rm NCO_{eff}}")
+ax.set_xlim(nmin,nmax)
+ax.set_ylim(12.5,20)
+ax.set_ylabel(L"log_{10} N_H\ [{\rm cm^{-2}}]", fontsize=FS+2)
+#ax.set_ylabel(L"log_{10} x_i", fontsize=FS+4)
+ax.legend(loc="best", frameon=false, fontsize=FS)
+ax.tick_params(labelsize=FS, axis="both")
+ax.grid(true, ls=":")
+#fig.tight_layout()
 #savefig(file_path * "/nH_vs_x_bin_" * noneq *".png")
+savefig(fname*".png")
 
 #=
 nH = rho .* 287
