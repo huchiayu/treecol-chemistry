@@ -460,7 +460,7 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         end #zero allocation
         abund_dot_int .= abund_dot[idx_integrate]
     end
-    rtol, atol = 1e-4, 1e-7
+    rtol, atol, ofbtol = 1e-4, 1e-7, 1e-2
     #tend = SEC_PER_YEAR * 1e10 / Zp / nH
     tend = SEC_PER_YEAR * dtime
     tspan = (0.0, tend)
@@ -471,8 +471,9 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         reltol=rtol, abstol=atol,
         #isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
         #isoutofdomain=(y,p,t)->any(x->(x<-1e-50||x>1.0+1e-50),y),
-        isoutofdomain=(y,p,t)->any(x->(x<0.0-rtol||x>1.0+rtol),abund.*max_abund_inv),
+        isoutofdomain=(y,p,t)->any(x->(x<0.0-ofbtol||x>1.0+ofbtol),abund.*max_abund_inv),
         #isoutofdomain=(y,p,t)->speciesoutofbound(abund,Zp),
+        maxiters=1e4,
         save_everystep=false);
     abund_final[idx_integrate] .= sol.u[end]
     calc_abund_derived(abund_final, Zp, xneq)
