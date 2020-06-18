@@ -70,10 +70,11 @@ const SupTh = false
 const grRec = false
 const ssC = false
 
-
-#species_noneq = []
+#=
+species_noneq = []
 #species_noneq = ["H2"]
-species_noneq = ["H2", "H+"]
+#species_noneq = ["H2", "H+"]
 
 const N_neq = length(species_noneq)
 const NONEQ = N_neq > 0
+=#
