@@ -34,7 +34,7 @@ end
 
 
 const ANGLE = 0.7
-const ShieldingLength = 0.1
+#const ShieldingLength = 0.5
 
 const XH = 0.71
 const BOLTZMANN=1.3806e-16
@@ -48,12 +48,14 @@ const UnitDensity_in_cgs = UnitMass_in_g / UnitLength_in_cm^3
 const UnitDensity_in_pccm = UnitDensity_in_cgs/PROTONMASS
 const Year_in_s = 31556926.
 
-const fac_col = (UnitMass_in_g/UnitLength_in_cm^2)*(XH/PROTONMASS)
+const fac_col = (UnitMass_in_g/UnitLength_in_cm^2)/PROTONMASS
 
 const facNHtoAv = 5.35e-22
 
 
-function solve_chem_all_particles(i)
+function solve_chem_all_particles(i, file_path, Zp)
+    println("=============== snapshot ", i, " ===============")
+
     snap = ""
     if i < 10
         snap = "00" * string(i)
@@ -62,20 +64,10 @@ function solve_chem_all_particles(i)
     else
         snap = string(i)
     end
-    println("snapshot ", snap)
+
     #X = [SVector{N}( rand(MersenneTwister(i),N) ) for i in 1:Npart-1]
     #push!(X,SVector(0.,0.,0.))
     #push!(X,SVector(0.5,0.5,0.5))
-
-    #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh200"
-    #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft4_SFLJ4_eff0p5_stoIMFfix_rngSF_convSF"
-    #snap = "550"
-    file_path = "/Users/chu/simulations/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Lsh100"
-    #snap = "860"
-    #file_path = "/ptmp/huchiayu/snapshots/tallbox/SFSNPI_N1e6_gS10H250dS40H250_soft2_SFMJ1_eff0p5_60Myr_Z0p1"
-    #snap = "415"
-
-    Zp = 1.0
 
     fname = file_path * "/snap_" * snap * ".hdf5"
     Npart, pos, vel, rho, u, mass, hsml, id_gas,
@@ -111,7 +103,7 @@ function solve_chem_all_particles(i)
     #X .*= BOXSIZE
     #push!(X,SVector(0.,0.,0.) .+ 0.01)
 
-    dt = 3e-2   #30Myr
+    dt::T = 3e-2   #30Myr
     idx = @. ( time - sftime < dt )
     SFR = 1e10 * sum(abs.(m_star[idx])) / (dt*1e9)
     facSFR = SFR / 5e-3
@@ -135,7 +127,11 @@ function solve_chem_all_particles(i)
     for i in 1:Npart
         #abund = abund_all[:,1]
         #xneq = SVector{1,T}([abund[1,i]])
-        xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
+        if NONEQ
+            xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
+        else
+            xneq = SVector{N_neq,T}()
+        end
         #use C+ & CO from simulations as the initial guess
         #abund_all[i][dict["CO"]] = abund[3,i] * (abC_s/3.01e-4)
         #abund_all[i][dict["C+"]] = abC_s * Zp - abund_all[i][dict["CO"]]
@@ -171,24 +167,30 @@ function solve_chem_all_particles(i)
 
         println("loop over particles and solve the chemistry network...")
         #@time for i in 273432:273432
-        @time @threads for i in findall((nH.>1).&(temp.<3e3)) #better load balance
+        ichem = findall((nH.>1).&(temp.<3e3))
+        println(length(ichem), " cold and dense particles found...")
+        @time @threads for i in ichem #better load balance
             if i%1000 == 0
                 print("i=", i, " ")
             end
             ga = TreeGather{T}()
             treewalk(ga,X[i],tree,ANGLE,ShieldingLength,boxsizes)
             ga_out[i] = ga
-            NH = ga.column_all .* fac_col
-            NH2 = ga.column_H2 .* fac_col
-            NCO = ga.column_CO .* fac_col
+            NH = ga.column_all .* (fac_col*XH)
+            NH2 = ga.column_H2 .* (fac_col/2)
+            NCO = ga.column_CO .* (fac_col/28)
             NC = 0.0
             NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAv))) / facNHtoAv
             NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
             NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
 
-            xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
+            if NONEQ
+                xneq = SVector{N_neq,T}([abund[1,i], abund[2,i]])
+            else
+                xneq = SVector{N_neq,T}()
+            end
             #@show nH[i], temp[i], ξ, IUV, Zp, NH_eff[i], NH2_eff[i], NCO_eff[i]
-            temp[i] = temp[i] < 1 ? 1 : temp[i]
+            temp[i] = temp[i] < 3.0 ? 3.0 : temp[i]
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
                 SVector{NPIX,T}(NH),
                 SVector{NPIX,T}(NH2),
@@ -198,7 +200,7 @@ function solve_chem_all_particles(i)
             #dt = 1e9 / (Zp * nH[i]) #in years
             solve_equilibrium_abundances(abund_all[i], dt, par)
         end
-
+        println("chemsitry done!")
 
         #this may seem redundant as it'll be computed in the next iteration
         #however, treewalk is so fast (compared to chemistry) that it doesn't hurt
@@ -214,9 +216,9 @@ function solve_chem_all_particles(i)
             ga = TreeGather{T}()
             treewalk(ga,X[i],tree,ANGLE,ShieldingLength,boxsizes)
             ga_out[i] = ga
-            NH = ga.column_all .* fac_col
-            NH2 = ga.column_H2 .* fac_col
-            NCO = ga.column_CO .* fac_col
+            NH = ga.column_all .* (fac_col*XH)
+            NH2 = ga.column_H2 .* (fac_col/2)
+            NCO = ga.column_CO .* (fac_col/28)
             NH_eff[i] = -log(mean(exp.(-NH.*facNHtoAv))) / facNHtoAv
             NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
             NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
@@ -233,7 +235,11 @@ function solve_chem_all_particles(i)
         end
         #T = Float64
 
-        fnamebase = "/chem-neqH2Hp-noCOic-treewalk-"
+        if NONEQ
+            fnamebase = "/chem-neqH2Hp-noCOic-TF3-"
+        else
+            fnamebase = "/chem-eqH2Hp-noCOic-TF3-"
+        end
         fname = file_path * fnamebase * snap * "-" * string(j) *".hdf5"
         fid=h5open(fname,"w")
         grp_head = g_create(fid,"Header");
@@ -251,18 +257,6 @@ function solve_chem_all_particles(i)
     end #iteration loop
     return abund_all, ga_out, X, NH_eff, NH2_eff, NCO_eff, tree_out
 end
-
-i = 640
-abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles(i);
-#=
-snaps = collect(640:-10:150)
-for i in snaps
-    abund_all, ga, X, NH, NH2, NCO, tree = solve_chem_all_particles(i);
-end
-=#
-0
-
-
 
 #=
 ix,iy = 1,2
