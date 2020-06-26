@@ -471,17 +471,38 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         reltol=rtol, abstol=atol,
         #isoutofdomain=(y,p,t)->any(x->(x<0.0||x>1.0),y),
         #isoutofdomain=(y,p,t)->any(x->(x<-1e-50||x>1.0+1e-50),y),
-        isoutofdomain=(y,p,t)->any(x->(x<0.0-ofbtol||x>1.0+ofbtol),abund.*max_abund_inv),
-        #isoutofdomain=(y,p,t)->speciesoutofbound(abund,Zp),
+        #isoutofdomain=(y,p,t)->any(x->(x<0.0-ofbtol||x>1.0+ofbtol),abund.*max_abund_inv),
+        isoutofdomain=(y,p,t)->speciesoutofbound(abund, max_abund_inv, ofbtol),
         maxiters=1e4,
         save_everystep=false);
     abund_final[idx_integrate] .= sol.u[end]
     calc_abund_derived(abund_final, Zp, xneq)
 
     abund .= abund_final
-    return abund_final, reac_rates
+    return sol.retcode, reac_rates
 end
 
+
+function speciesoutofbound(abund, max_abund_inv, ofbtol)
+    for i in 1:N_spec
+        x = abund[i] * max_abund_inv[i]
+        if x < 0.0 - ofbtol
+            #println("species out of bound, species=", all_species[i], "  abund=", abund[i])
+            return true
+        elseif x < 0.0
+            #println("fixing small error, species=", all_species[i], "  abund=", abund[i])
+            abund[i] = 0.0
+        end
+        if x > 1.0 + ofbtol
+            #println("species out of bound, species=", all_species[i], "  abund=", abund[i])
+            return true
+        elseif x > 1.0
+            #println("fixing small error, species=", all_species[i], "  abund=", abund[i])
+            abund[i] = 1.0 / max_abund_inv[i]
+        end
+    end
+    return false
+end
 
 #end
 function get_max_abundance!(max_abund_inv, Zp)

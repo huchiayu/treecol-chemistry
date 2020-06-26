@@ -150,8 +150,10 @@ function solve_chem_all_particles(i, file_path, Zp)
     #ga_out = TreeGather{T}()
     ga_out = Vector{TreeGather{Float64}}(undef,Npart)
     tree_out = nothing
+    status = zeros(Int, Npart)
 
-    Nstep = 2
+
+    Nstep = 3
     time_max = 1e9 #unit = yr
     dt = time_max / Nstep
     NCpix = zeros(NPIX)
@@ -189,7 +191,6 @@ function solve_chem_all_particles(i, file_path, Zp)
             else
                 xneq = SVector{N_neq,T}()
             end
-            #@show nH[i], temp[i], ξ, IUV, Zp, NH_eff[i], NH2_eff[i], NCO_eff[i]
             temp[i] = temp[i] < 3.0 ? 3.0 : temp[i]
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
                 SVector{NPIX,T}(NH),
@@ -198,9 +199,15 @@ function solve_chem_all_particles(i, file_path, Zp)
                 SVector{NPIX,T}(NCpix), xneq)
             #@show NH,NH2,NCO,NCpix,xneq
             #dt = 1e9 / (Zp * nH[i]) #in years
-            solve_equilibrium_abundances(abund_all[i], dt, par)
+            retcode = solve_equilibrium_abundances(abund_all[i], dt, par)
+            if retcode != :Success
+                status[i] = 1  #1 means failed
+                @show nH[i], temp[i], ξ, IUV, Zp
+                @show NH_eff[i], NH2_eff[i], NCO_eff[i], xneq
+            end
         end
         println("chemsitry done!")
+        @show sum(status)
 
         #this may seem redundant as it'll be computed in the next iteration
         #however, treewalk is so fast (compared to chemistry) that it doesn't hurt
@@ -223,7 +230,6 @@ function solve_chem_all_particles(i, file_path, Zp)
             NH2_eff[i] = -log(mean(exp.(-NH2.*facNHtoAv))) / facNHtoAv
             NCO_eff[i] = -log(mean(exp.(-NCO.*facNHtoAv))) / facNHtoAv
         end
-
         println("done!")
         tree_out = tree
 
@@ -234,7 +240,6 @@ function solve_chem_all_particles(i, file_path, Zp)
             abund_all_arr[:,i] = abund_all[i]
         end
         #T = Float64
-
         if NONEQ
             fnamebase = "/chem-neqH2Hp-noCOic-TF3-"
         else
@@ -252,8 +257,8 @@ function solve_chem_all_particles(i, file_path, Zp)
         h5write(fname, "Chemistry/NH_eff"         , NH_eff)
         h5write(fname, "Chemistry/NH2_eff"        , NH2_eff)
         h5write(fname, "Chemistry/NCO_eff"        , NCO_eff)
+        h5write(fname, "Chemistry/Status"         , status)
         close(fid)
-
     end #iteration loop
     return abund_all, ga_out, X, NH_eff, NH2_eff, NCO_eff, tree_out
 end
