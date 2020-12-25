@@ -24,7 +24,7 @@ using DifferentialEquations
 using Parameters
 using Statistics
 
-using Sundials #for CVODE_BDF
+#using Sundials #for CVODE_BDF
 
 
 include("shielding_functions.jl")
@@ -473,12 +473,13 @@ function solve_equilibrium_abundances(abund, dtime, par::Par)
         #isoutofdomain=(y,p,t)->any(x->(x<-1e-50||x>1.0+1e-50),y),
         #isoutofdomain=(y,p,t)->any(x->(x<0.0-ofbtol||x>1.0+ofbtol),abund.*max_abund_inv),
         isoutofdomain=(y,p,t)->speciesoutofbound(abund, max_abund_inv, ofbtol),
-        maxiters=1e4,
+        maxiters=1e3,
         save_everystep=false);
     abund_final[idx_integrate] .= sol.u[end]
     calc_abund_derived(abund_final, Zp, xneq)
 
     abund .= abund_final
+    speciesoutofbound(abund, max_abund_inv, Inf) #fixing OFB error
     return sol.retcode, reac_rates
 end
 

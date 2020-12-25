@@ -74,10 +74,10 @@ function solve_chem_all_particles(i, file_path, Zp)
         abund, fH2, fdust, col_tot, col_H2, col_CO, Tdust,
         N_star, pos_star, vel_star, m_star, sftime, id_star,
         boxsize, time = read_snap(fname);
-    #println("boxsize = ", boxsize)
+    println("boxsize = ", boxsize)
 
-    boxsizes = SVector(1.0, 1.0, 20.0)
-    center = SVector(0.5, 0.5, 0.0)
+    boxsizes = SVector(boxsize, boxsize, 20.0)
+    center = SVector(0.5*boxsize, 0.5*boxsize, 0.0)
     topnode_length = SVector(10., 10., 10.)
 
 
@@ -106,11 +106,12 @@ function solve_chem_all_particles(i, file_path, Zp)
     dt::T = 3e-2   #30Myr
     idx = @. ( time - sftime < dt )
     SFR = 1e10 * sum(abs.(m_star[idx])) / (dt*1e9)
-    facSFR = SFR / 5e-3
-    @show facSFR, SFR
+    facSFR = SFR / 2.5e-3
+    #facSFR = 1.0
 
     ξ = 1.3e-16 * facSFR #H2
-    IUV = 1.0 * facSFR
+    IUV = 1.0 * (facSFR > 2e-3 ? facSFR : 2e-3) #cosmic UV background
+    @show facSFR, SFR, ξ, IUV
 
     mu = 2.3 #mean molecular weight
     nH = rho .* (XH * UnitDensity_in_cgs / PROTONMASS)
@@ -123,6 +124,10 @@ function solve_chem_all_particles(i, file_path, Zp)
 
     abund_all = [zeros(N_spec) for _ in 1:Npart]
 
+    if NONEQ==false 
+        println("steady state: set a ceiling xH2 for the initial guess")
+        abund[1, abund[1,:] .> 0.45] .= 0.45  #improve stability
+    end
 
     for i in 1:Npart
         #abund = abund_all[:,1]
@@ -161,6 +166,7 @@ function solve_chem_all_particles(i, file_path, Zp)
     for j in 1:Nstep
         @. mass_H2 = mass * getindex(abund_all,iH2) * XH * 2.0
         @. mass_CO = mass * getindex(abund_all,iCO) * XH * 28.0
+
         println("iteration ", j)
 
         println("buildtree...")
@@ -172,6 +178,7 @@ function solve_chem_all_particles(i, file_path, Zp)
         ichem = findall((nH.>1).&(temp.<3e3))
         println(length(ichem), " cold and dense particles found...")
         @time @threads for i in ichem #better load balance
+        #@time for i in ichem #better load balance
             if i%1000 == 0
                 print("i=", i, " ")
             end
@@ -191,7 +198,8 @@ function solve_chem_all_particles(i, file_path, Zp)
             else
                 xneq = SVector{N_neq,T}()
             end
-            temp[i] = temp[i] < 3.0 ? 3.0 : temp[i]
+            temp[i] = temp[i] > 3.0 ? temp[i] : 3.0
+            #nH[i] = nH[i] < 3e5 ? nH[i] : 3e5
             par = Par{NPIX,T}(nH[i], temp[i], ξ, IUV, Zp,
                 SVector{NPIX,T}(NH),
                 SVector{NPIX,T}(NH2),
@@ -199,16 +207,24 @@ function solve_chem_all_particles(i, file_path, Zp)
                 SVector{NPIX,T}(NCpix), xneq)
             #@show NH,NH2,NCO,NCpix,xneq
             #dt = 1e9 / (Zp * nH[i]) #in years
-            retcode = solve_equilibrium_abundances(abund_all[i], dt, par)
+            retcode, _  = solve_equilibrium_abundances(abund_all[i], dt, par)
             if retcode != :Success
                 status[i] = 1  #1 means failed
-                @show nH[i], temp[i], ξ, IUV, Zp
+                @show retcode
+                @show i, nH[i], temp[i], ξ, IUV, Zp
                 @show NH_eff[i], NH2_eff[i], NCO_eff[i], xneq
+                #@show NH, NH2, NCO
+                #@show abund[1,i],abund[2,i]
             end
         end
         println("chemsitry done!")
         @show sum(status)
 
+        xCO=getindex.(abund_all, dict["CO"])
+        println("CO mass = ",  1e10*sum(mass.*xCO) * XH * 28 )
+        xH2=getindex.(abund_all, dict["H2"])
+        println("H2 mass = ",  1e10*sum(mass.*xH2) * XH * 2  )
+        
         #this may seem redundant as it'll be computed in the next iteration
         #however, treewalk is so fast (compared to chemistry) that it doesn't hurt
         #and we get the updated column densities for little overhead
@@ -244,6 +260,9 @@ function solve_chem_all_particles(i, file_path, Zp)
             fnamebase = "/chem-neqH2Hp-noCOic-TF3-"
         else
             fnamebase = "/chem-eqH2Hp-noCOic-TF3-"
+        end
+        if grRec
+            fnamebase *= "GrRec-"
         end
         fname = file_path * fnamebase * snap * "-" * string(j) *".hdf5"
         fid=h5open(fname,"w")

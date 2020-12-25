@@ -32,8 +32,8 @@ xneq = SVector{N_neq,T}(0.4997, 4.1089e-13)
 #xneq = SVector{N_neq,T}(0.4997)
 #xneq = SVector{N_neq,T}()
 
-#abund[dict["CO"]] = abC_s * Zp
-abund[dict["C+"]] = abC_s * Zp - abund[dict["CO"]]
+abund[dict["CO"]] = abC_s * Zp
+#abund[dict["C+"]] = abC_s * Zp - abund[dict["CO"]]
 #abund[dict["H2"]] = xneq[1]
 #abund[dict["H+"]] = xneq[2]
 init_abund(abund, Zp, xneq)
